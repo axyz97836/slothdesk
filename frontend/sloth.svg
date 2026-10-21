@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="SlothDesk sloth mark">
+<rect width="64" height="64" rx="21" fill="#243c32"/>
+<path d="M12 37c0-15 9-25 20-25s20 10 20 25c0 11-9 18-20 18S12 48 12 37" fill="#b6c8a4"/>
+<ellipse cx="24" cy="34" rx="8" ry="12" transform="rotate(25 24 34)" fill="#e2e4d0"/>
+<ellipse cx="40" cy="34" rx="8" ry="12" transform="rotate(-25 40 34)" fill="#e2e4d0"/>
+<path d="M25 33q-3-3-6 0m20 0q3-3 6 0" stroke="#253e34" stroke-width="2.5" stroke-linecap="round" fill="none"/>
+<ellipse cx="32" cy="40" rx="4" ry="3" fill="#34463d"/>
+<path d="M26 46q6 5 12 0" stroke="#34463d" stroke-width="2" stroke-linecap="round" fill="none"/>
+</svg>

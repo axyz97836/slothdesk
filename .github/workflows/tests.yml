@@ -1,0 +1,18 @@
+name: SlothDesk checks
+on:
+  push:
+  pull_request:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Test backend
+        run: python3 -m unittest discover -s tests -v
+      - name: Check syntax
+        run: python3 -m py_compile app.py

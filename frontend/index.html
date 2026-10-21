@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f5f5ed">
+  <meta name="description" content="SlothDesk sorts your local files with open-weight AI. Private by default, slow by choice.">
+  <title>SlothDesk — Less filing. More living.</title>
+  <link rel="icon" type="image/svg+xml" href="/sloth.svg">
+  <link rel="stylesheet" href="/styles.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <div class="shell">
+    <aside class="sidebar" aria-label="App navigation">
+      <a class="brand" href="/" aria-label="SlothDesk home">
+        <img src="/sloth.svg" width="43" height="43" alt="">
+        <span class="brand-copy"><strong>slothdesk<span class="brand-dot">.</span></strong><small>The art of doing less</small></span>
+      </a>
+      <div class="sidebar-caption">YOUR WORKSPACE</div>
+      <nav class="nav-list" aria-label="On this page">
+        <a class="nav-item active" href="#workspace"><span class="nav-icon">▦</span> Workspace</a>
+        <a class="nav-item" href="#review"><span class="nav-icon">☷</span> Review desk <span class="tiny-count" id="nav-count">0</span></a>
+        <a class="nav-item" href="#organized"><span class="nav-icon">▤</span> Organized</a>
+      </nav>
+      <div class="sidebar-rule"></div>
+      <div class="sidebar-caption">A LITTLE LESS EFFORT</div>
+      <div class="step"><span class="step-no">01</span><span>Drop files into your local inbox.</span></div>
+      <div class="step"><span class="step-no">02</span><span>Let the sloth read and suggest.</span></div>
+      <div class="step"><span class="step-no">03</span><span>Approve the plan. Go relax.</span></div>
+      <div class="sidebar-bottom">
+        <div class="local-card"><span class="local-card-icon">⌁</span><strong>Private by design</strong><p>Files and AI inference stay on this computer. No cloud accounts, no upload.</p><span class="mini-label">LOCAL-FIRST · OPEN-WEIGHT</span></div>
+        <div class="version">SLOTHDESK v1.0 <span>•</span> BUILT FOR HACKTOBERFEST 2026</div>
+      </div>
+    </aside>
+    <main id="workspace" class="main">
+      <div class="topbar"><span class="breadcrumb">Workspace <span class="breadcrumb-slash">/</span> Overview</span><span class="topbar-chip"><span class="pulse"></span> Running on localhost</span></div>
+      <section class="hero" aria-labelledby="hero-title">
+        <div class="hero-copy">
+          <span class="eyebrow"><span class="leaf">✳</span> YOUR AI-POWERED SLOW LANE</span>
+          <h1 id="hero-title">Less filing.<br><em>More living.</em></h1>
+          <p>That messy folder isn't going to organize itself. Or is it? Meet your very unhurried, surprisingly helpful local AI assistant.</p>
+          <div class="hero-actions"><button class="button primary" id="analyze-button" type="button"><span aria-hidden="true">✦</span> Analyze my inbox <span class="button-arrow" aria-hidden="true">↗</span></button><button class="button subtle" id="demo-button" type="button">Try with sample files <span aria-hidden="true">→</span></button></div>
+          <div class="privacy-line"><span aria-hidden="true">⌑</span> Your data never leaves your machine.</div>
+        </div>
+        <div class="hero-art" aria-hidden="true">
+          <div class="art-halo halo1"></div><div class="art-halo halo2"></div>
+          <div class="paper paper-behind"><span>notes_02.md</span><i></i><i></i><i></i></div>
+          <div class="paper paper-front"><span>hello, order.</span><i></i><i></i><i></i><span class="checkmark">✓</span></div>
+          <div class="art-orb">✳</div>
+          <div class="hero-art-caption">NO RUSH. JUST RESULTS.</div>
+        </div>
+      </section>
+      <section class="metrics" aria-label="Workspace statistics">
+        <article class="metric"><div class="metric-top"><span>Inbox files</span><span class="metric-symbol">▧</span></div><strong id="stat-inbox">—</strong><small>Waiting for a little help</small></article>
+        <article class="metric"><div class="metric-top"><span>AI suggestions</span><span class="metric-symbol">✳</span></div><strong id="stat-suggestions">0</strong><small>Ready for your approval</small></article>
+        <article class="metric"><div class="metric-top"><span>Files organized</span><span class="metric-symbol">✓</span></div><strong id="stat-organized">—</strong><small>Safely moved &amp; sorted</small></article>
+      </section>
+      <section class="content-grid" aria-label="Local files and AI status">
+        <div class="surface files-panel">
+          <div class="panel-head"><div><span class="section-kicker">01 / INPUT</span><h2>The messy inbox <span class="small-count" id="inbox-label">0</span></h2><p>Files in <code>data/inbox/</code> on your computer.</p></div><button class="icon-button" id="refresh-button" type="button" aria-label="Refresh inbox" title="Refresh inbox">↻</button></div>
+          <div id="file-list" class="file-list" aria-live="polite"><div class="empty-inline">Checking your local inbox…</div></div>
+          <div class="panel-bottom"><span>Text, code, Markdown, CSV &amp; JSON · 2 MB/file</span><span class="dots">•••</span></div>
+        </div>
+        <div class="stack">
+          <div class="surface model-panel"><span class="section-kicker">02 / INTELLIGENCE</span><h2>Meet your quiet genius.</h2><p>A real open-weight language model. Thinking locally, at its own pace.</p>
+            <label class="field-label" for="model-select">LOCAL MODEL</label>
+            <div class="model-select-wrap"><select id="model-select" aria-label="Choose installed local AI model"><option value="qwen2.5:1.5b">qwen2.5:1.5b (recommended)</option></select><span aria-hidden="true">⌄</span></div>
+            <div id="model-status" class="model-state"><span class="state-dot"></span><span>Checking Ollama connection…</span></div>
+            <a class="help-link" href="https://ollama.com/download" target="_blank" rel="noopener noreferrer">How to set up Ollama ↗</a>
+          </div>
+          <div class="surface undo-panel"><div class="undo-icon">↶</div><div><h3>Changed your mind?</h3><p>Your last batch can be undone without overwriting files.</p><button id="undo-button" type="button" class="text-button">Undo last batch <span aria-hidden="true">↗</span></button></div></div>
+        </div>
+      </section>
+      <section id="review" class="surface review-panel" aria-label="Review AI suggestions">
+        <div class="panel-head"><div><span class="section-kicker">03 / YOUR CALL</span><h2>Review desk <span class="small-count" id="review-label">0</span></h2><p>AI makes suggestions. You make decisions. Nothing moves without approval.</p></div><button id="export-button" type="button" class="button subtle small" disabled>Export plan ↗</button></div>
+        <div id="review-list" class="review-list"><div class="review-empty"><div class="review-empty-icon">✳</div><h3>A little quiet in here.</h3><p>Analyze a few inbox files and your AI suggestions will show up for review.</p></div></div>
+        <div class="review-footer"><span id="review-selection">No suggestions yet</span><button class="button primary" id="apply-button" type="button" disabled>Approve &amp; organize <span aria-hidden="true">→</span></button></div>
+      </section>
+      <section class="surface organized-panel" id="organized"><div class="panel-head"><div><span class="section-kicker">04 / THE CALM AFTER</span><h2>Where everything lands</h2><p>Categories created only when you approve file moves.</p></div><span class="folder-path">data/organized/</span></div><div id="categories" class="categories"></div></section>
+      <footer><span>SlothDesk <span class="footer-heart">✳</span> built for doing less.</span><span>100% local by default. 0% unnecessary hustle.</span></footer>
+    </main>
+  </div>
+  <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+</body>
+</html>
