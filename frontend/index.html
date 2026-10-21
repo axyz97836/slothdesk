@@ -3,84 +3,238 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#f5f5ed">
-  <meta name="description" content="SlothDesk sorts your local files with open-weight AI. Private by default, slow by choice.">
-  <title>SlothDesk — Less filing. More living.</title>
+  <meta name="theme-color" content="#fafaf8">
+  <meta name="description" content="SlothDesk organizes your local files with open-weight AI. Private, local, and reliable.">
+  <title>SlothDesk: Local AI File Organizer</title>
   <link rel="icon" type="image/svg+xml" href="/sloth.svg">
   <link rel="stylesheet" href="/styles.css">
   <script src="/app.js" defer></script>
 </head>
 <body>
-  <div class="shell">
-    <aside class="sidebar" aria-label="App navigation">
-      <a class="brand" href="/" aria-label="SlothDesk home">
-        <img src="/sloth.svg" width="43" height="43" alt="">
-        <span class="brand-copy"><strong>slothdesk<span class="brand-dot">.</span></strong><small>The art of doing less</small></span>
-      </a>
-      <div class="sidebar-caption">YOUR WORKSPACE</div>
-      <nav class="nav-list" aria-label="On this page">
-        <a class="nav-item active" href="#workspace"><span class="nav-icon">▦</span> Workspace</a>
-        <a class="nav-item" href="#review"><span class="nav-icon">☷</span> Review desk <span class="tiny-count" id="nav-count">0</span></a>
-        <a class="nav-item" href="#organized"><span class="nav-icon">▤</span> Organized</a>
-      </nav>
-      <div class="sidebar-rule"></div>
-      <div class="sidebar-caption">A LITTLE LESS EFFORT</div>
-      <div class="step"><span class="step-no">01</span><span>Drop files into your local inbox.</span></div>
-      <div class="step"><span class="step-no">02</span><span>Let the sloth read and suggest.</span></div>
-      <div class="step"><span class="step-no">03</span><span>Approve the plan. Go relax.</span></div>
-      <div class="sidebar-bottom">
-        <div class="local-card"><span class="local-card-icon">⌁</span><strong>Private by design</strong><p>Files and AI inference stay on this computer. No cloud accounts, no upload.</p><span class="mini-label">LOCAL-FIRST · OPEN-WEIGHT</span></div>
-        <div class="version">SLOTHDESK v1.0 <span>•</span> BUILT FOR HACKTOBERFEST 2026</div>
-      </div>
-    </aside>
-    <main id="workspace" class="main">
-      <div class="topbar"><span class="breadcrumb">Workspace <span class="breadcrumb-slash">/</span> Overview</span><span class="topbar-chip"><span class="pulse"></span> Running on localhost</span></div>
-      <section class="hero" aria-labelledby="hero-title">
-        <div class="hero-copy">
-          <span class="eyebrow"><span class="leaf">✳</span> YOUR AI-POWERED SLOW LANE</span>
-          <h1 id="hero-title">Less filing.<br><em>More living.</em></h1>
-          <p>That messy folder isn't going to organize itself. Or is it? Meet your very unhurried, surprisingly helpful local AI assistant.</p>
-          <div class="hero-actions"><button class="button primary" id="analyze-button" type="button"><span aria-hidden="true">✦</span> Analyze my inbox <span class="button-arrow" aria-hidden="true">↗</span></button><button class="button subtle" id="demo-button" type="button">Try with sample files <span aria-hidden="true">→</span></button></div>
-          <div class="privacy-line"><span aria-hidden="true">⌑</span> Your data never leaves your machine.</div>
-        </div>
-        <div class="hero-art" aria-hidden="true">
-          <div class="art-halo halo1"></div><div class="art-halo halo2"></div>
-          <div class="paper paper-behind"><span>notes_02.md</span><i></i><i></i><i></i></div>
-          <div class="paper paper-front"><span>hello, order.</span><i></i><i></i><i></i><span class="checkmark">✓</span></div>
-          <div class="art-orb">✳</div>
-          <div class="hero-art-caption">NO RUSH. JUST RESULTS.</div>
-        </div>
-      </section>
-      <section class="metrics" aria-label="Workspace statistics">
-        <article class="metric"><div class="metric-top"><span>Inbox files</span><span class="metric-symbol">▧</span></div><strong id="stat-inbox">—</strong><small>Waiting for a little help</small></article>
-        <article class="metric"><div class="metric-top"><span>AI suggestions</span><span class="metric-symbol">✳</span></div><strong id="stat-suggestions">0</strong><small>Ready for your approval</small></article>
-        <article class="metric"><div class="metric-top"><span>Files organized</span><span class="metric-symbol">✓</span></div><strong id="stat-organized">—</strong><small>Safely moved &amp; sorted</small></article>
-      </section>
-      <section class="content-grid" aria-label="Local files and AI status">
-        <div class="surface files-panel">
-          <div class="panel-head"><div><span class="section-kicker">01 / INPUT</span><h2>The messy inbox <span class="small-count" id="inbox-label">0</span></h2><p>Files in <code>data/inbox/</code> on your computer.</p></div><button class="icon-button" id="refresh-button" type="button" aria-label="Refresh inbox" title="Refresh inbox">↻</button></div>
-          <div id="file-list" class="file-list" aria-live="polite"><div class="empty-inline">Checking your local inbox…</div></div>
-          <div class="panel-bottom"><span>Text, code, Markdown, CSV &amp; JSON · 2 MB/file</span><span class="dots">•••</span></div>
-        </div>
-        <div class="stack">
-          <div class="surface model-panel"><span class="section-kicker">02 / INTELLIGENCE</span><h2>Meet your quiet genius.</h2><p>A real open-weight language model. Thinking locally, at its own pace.</p>
-            <label class="field-label" for="model-select">LOCAL MODEL</label>
-            <div class="model-select-wrap"><select id="model-select" aria-label="Choose installed local AI model"><option value="qwen2.5:1.5b">qwen2.5:1.5b (recommended)</option></select><span aria-hidden="true">⌄</span></div>
-            <div id="model-status" class="model-state"><span class="state-dot"></span><span>Checking Ollama connection…</span></div>
-            <a class="help-link" href="https://ollama.com/download" target="_blank" rel="noopener noreferrer">How to set up Ollama ↗</a>
+  <!-- Header: Brand, Model Status, and Localhost Host Information -->
+  <header class="app-header">
+    <div class="header-inner">
+      <div class="brand-group">
+        <a href="#workspace" class="brand-link" aria-label="SlothDesk: Home">
+          <img src="/sloth.svg" width="34" height="34" alt="" class="brand-logo">
+          <div class="brand-text">
+            <h1 class="brand-name">SlothDesk</h1>
+            <span class="brand-badge">Local File Organizer</span>
           </div>
-          <div class="surface undo-panel"><div class="undo-icon">↶</div><div><h3>Changed your mind?</h3><p>Your last batch can be undone without overwriting files.</p><button id="undo-button" type="button" class="text-button">Undo last batch <span aria-hidden="true">↗</span></button></div></div>
+        </a>
+      </div>
+      <div class="header-status">
+        <div class="model-badge" id="model-badge">
+          <div class="model-select-group">
+            <label for="model-select" class="model-label">Model:</label>
+            <select id="model-select" class="model-select" aria-label="Installed Ollama model">
+              <option value="qwen2.5:1.5b">qwen2.5:1.5b (recommended)</option>
+            </select>
+          </div>
+        </div>
+        <div id="model-status" class="model-status" aria-live="polite">
+          <span class="state-dot" aria-hidden="true"></span>
+          <span class="state-text">Checking Ollama...</span>
+        </div>
+        <div class="host-badge" title="Localhost only: all operations remain on this machine">
+          <svg class="icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+          </svg>
+          <span>Localhost:8765</span>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Desktop Workspace -->
+  <main id="workspace" class="workspace">
+    <!-- Hidden legacy counter elements to preserve programmatic compatibility -->
+    <span id="stat-inbox" class="sr-only">0</span>
+    <span id="stat-suggestions" class="sr-only">0</span>
+    <span id="nav-count" class="sr-only">0</span>
+
+    <!-- 1. Inbox Section -->
+    <section class="panel inbox-panel" id="inbox-section" aria-labelledby="inbox-title">
+      <div class="panel-header">
+        <div class="panel-header-title">
+          <h2 id="inbox-title" class="panel-title">
+            <svg class="panel-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M22 12h-6l-2 3h-4l-2-3H2v7a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-7Z"/>
+              <path d="M5.45 5.11 2 12v0h20v0l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/>
+            </svg>
+            <span>Inbox</span>
+            <span class="badge" id="inbox-label">0</span>
+          </h2>
+          <p class="panel-subtitle">Files located in <code>data/inbox/</code> ready for review.</p>
+        </div>
+        <div class="panel-actions">
+          <button type="button" class="btn btn-secondary btn-sm" id="demo-button" title="Load fictional sample files to test sorting">
+            <svg class="icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+            </svg>
+            <span>Load sample files</span>
+          </button>
+          <button type="button" class="btn btn-secondary btn-sm btn-icon" id="refresh-button" aria-label="Refresh workspace" title="Refresh files from disk">
+            <svg class="icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- Inbox Controls & Selection Toolbar -->
+      <div class="inbox-toolbar">
+        <div class="selection-tools">
+          <button type="button" class="btn-link" id="select-all-inbox">Select all</button>
+          <span class="sep" aria-hidden="true">·</span>
+          <button type="button" class="btn-link" id="deselect-all-inbox">Deselect all</button>
+          <span class="selection-count" id="inbox-selection-summary">0 of 0 files selected</span>
+        </div>
+        <div class="analyze-group">
+          <button type="button" class="btn btn-primary" id="analyze-button" disabled title="Select at least 1 file to analyze">
+            <svg class="icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/>
+            </svg>
+            <span id="analyze-button-label">Analyze selected (0)</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- File List -->
+      <div class="file-table-wrap">
+        <div class="file-table-header" aria-hidden="true">
+          <div class="col-check"></div>
+          <div class="col-name">File Name</div>
+          <div class="col-type">Format</div>
+          <div class="col-size">Size</div>
+          <div class="col-status">Status</div>
+        </div>
+        <div id="file-list" class="file-list" role="region" aria-label="Inbox files" aria-live="polite">
+          <div class="empty-state">Checking your local inbox...</div>
+        </div>
+      </div>
+      <div class="panel-note">
+        <span>Supported formats: Markdown, Text, Python, JavaScript, HTML, JSON, CSV, YAML, Log (max 2 MB per file, max 12 files per batch).</span>
+      </div>
+    </section>
+
+    <!-- 2. AI Suggestions Section -->
+    <section class="panel review-panel" id="review" aria-labelledby="review-title">
+      <div class="panel-header">
+        <div class="panel-header-title">
+          <h2 id="review-title" class="panel-title">
+            <svg class="panel-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/>
+            </svg>
+            <span>AI Suggestions</span>
+            <span class="badge" id="review-label">0</span>
+          </h2>
+          <p class="panel-subtitle">Recommendations from the local model. Edit categories or filenames before approving. Nothing moves without confirmation.</p>
+        </div>
+        <div class="panel-actions">
+          <button type="button" class="btn btn-secondary btn-sm" id="export-button" disabled title="Export suggestions as CSV">
+            <svg class="icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+            </svg>
+            <span>Export plan</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Review Toolbar -->
+      <div class="review-toolbar">
+        <div class="selection-tools">
+          <button type="button" class="btn-link" id="select-all-review">Select all</button>
+          <span class="sep" aria-hidden="true">·</span>
+          <button type="button" class="btn-link" id="deselect-all-review">Deselect all</button>
+          <span class="selection-count" id="review-selection">No suggestions yet</span>
+        </div>
+        <div class="approve-group">
+          <button type="button" class="btn btn-primary" id="apply-button" disabled>
+            <svg class="icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <polyline points="20 6 9 17 4 12"/>
+            </svg>
+            <span id="apply-button-label">Approve and organize (0)</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Review List -->
+      <div id="review-list" class="review-list" role="region" aria-label="Review AI suggestions">
+        <div class="empty-state">
+          <p class="empty-state-title">No suggestions pending.</p>
+          <p class="empty-state-desc">Select inbox files above and click "Analyze selected" to generate organization proposals.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Bottom Two-Column Grid: Organized Files & History/Undo -->
+    <div class="workspace-grid">
+      <!-- 3. Organized Files Section -->
+      <section class="panel organized-panel" id="organized" aria-labelledby="organized-title">
+        <div class="panel-header">
+          <div class="panel-header-title">
+            <h2 id="organized-title" class="panel-title">
+              <svg class="panel-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"/>
+              </svg>
+              <span>Organized Files</span>
+              <span class="badge" id="stat-organized">0</span>
+            </h2>
+            <p class="panel-subtitle">Categories created in <code>data/organized/</code>.</p>
+          </div>
+        </div>
+        <div id="categories" class="categories-grid" role="list"></div>
+      </section>
+
+      <!-- 4. History and Undo Section -->
+      <section class="panel history-panel" id="history-section" aria-labelledby="history-title">
+        <div class="panel-header">
+          <div class="panel-header-title">
+            <h2 id="history-title" class="panel-title">
+              <svg class="panel-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5v0a5.5 5.5 0 0 1-5.5 5.5H11"/>
+              </svg>
+              <span>History and Undo</span>
+              <span class="badge" id="stat-batches">0 active</span>
+            </h2>
+            <p class="panel-subtitle">Revert organized batches safely back to the inbox.</p>
+          </div>
+        </div>
+        <div class="history-content">
+          <div id="latest-batch-card" class="latest-batch-card">
+            <div class="batch-empty">No active batches to undo.</div>
+          </div>
+          <div class="undo-actions">
+            <button type="button" class="btn btn-outline-danger" id="undo-button" disabled title="Undo latest organization batch">
+              <svg class="icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5v0a5.5 5.5 0 0 1-5.5 5.5H11"/>
+              </svg>
+              <span>Undo latest batch</span>
+            </button>
+          </div>
+          <div class="recent-history">
+            <h3 class="recent-title">Recent Batch Log</h3>
+            <div id="history-log" class="history-log"></div>
+          </div>
         </div>
       </section>
-      <section id="review" class="surface review-panel" aria-label="Review AI suggestions">
-        <div class="panel-head"><div><span class="section-kicker">03 / YOUR CALL</span><h2>Review desk <span class="small-count" id="review-label">0</span></h2><p>AI makes suggestions. You make decisions. Nothing moves without approval.</p></div><button id="export-button" type="button" class="button subtle small" disabled>Export plan ↗</button></div>
-        <div id="review-list" class="review-list"><div class="review-empty"><div class="review-empty-icon">✳</div><h3>A little quiet in here.</h3><p>Analyze a few inbox files and your AI suggestions will show up for review.</p></div></div>
-        <div class="review-footer"><span id="review-selection">No suggestions yet</span><button class="button primary" id="apply-button" type="button" disabled>Approve &amp; organize <span aria-hidden="true">→</span></button></div>
-      </section>
-      <section class="surface organized-panel" id="organized"><div class="panel-head"><div><span class="section-kicker">04 / THE CALM AFTER</span><h2>Where everything lands</h2><p>Categories created only when you approve file moves.</p></div><span class="folder-path">data/organized/</span></div><div id="categories" class="categories"></div></section>
-      <footer><span>SlothDesk <span class="footer-heart">✳</span> built for doing less.</span><span>100% local by default. 0% unnecessary hustle.</span></footer>
-    </main>
-  </div>
+    </div>
+  </main>
+
+  <!-- Minimal Professional Footer -->
+  <footer class="app-footer">
+    <div class="footer-inner">
+      <div class="footer-left">
+        <strong>SlothDesk</strong>: Local AI file triage. Private by default.
+      </div>
+      <div class="footer-right">
+        <span>Files and inference remain strictly on this device. Zero telemetry.</span>
+      </div>
+    </div>
+  </footer>
+
+  <!-- Toast Notification Container -->
   <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
 </body>
 </html>

@@ -515,6 +515,8 @@ class Handler(BaseHTTPRequestHandler):
                 model = data.get("model", DEFAULT_MODEL)
                 if not isinstance(names, list) or not 1 <= len(names) <= MAX_BATCH:
                     raise ValueError("Choose 1 to 12 supported files")
+                if not all(isinstance(n, str) for n in names) or len(set(names)) != len(names):
+                    raise ValueError("File names must be unique strings")
                 if not isinstance(model, str) or not model_present(model, installed_models()["models"]):
                     raise ValueError("Selected model is not installed. Run: ollama pull qwen2.5:1.5b")
                 start = time.monotonic()

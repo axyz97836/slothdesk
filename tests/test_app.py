@@ -491,6 +491,39 @@ class SlothDeskTests(unittest.TestCase):
         finally:
             server.shutdown(); server.server_close(); thread.join(timeout=2)
 
+    def test_selective_analyze_validation(self):
+        """Selective analysis endpoint validates batch size, item types, and uniqueness."""
+        server = ThreadingHTTPServer(('127.0.0.1', 0), app.Handler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        base = f'http://127.0.0.1:{server.server_port}'
+        try:
+            # 1. Empty files list
+            req = Request(base + '/api/analyze', data=json.dumps({'files': []}).encode(),
+                          headers={'Content-Type': 'application/json'}, method='POST')
+            with self.assertRaises(HTTPError) as ctx:
+                urlopen(req)
+            self.assertEqual(ctx.exception.code, 400)
+
+            # 2. Duplicate filenames in batch
+            req = Request(base + '/api/analyze', data=json.dumps({'files': ['doc1.txt', 'doc1.txt']}).encode(),
+                          headers={'Content-Type': 'application/json'}, method='POST')
+            with self.assertRaises(HTTPError) as ctx:
+                urlopen(req)
+            self.assertEqual(ctx.exception.code, 400)
+            err_body = json.loads(ctx.exception.read().decode())
+            self.assertIn("File names must be unique strings", err_body["error"])
+
+            # 3. Non-string items
+            req = Request(base + '/api/analyze', data=json.dumps({'files': [123]}).encode(),
+                          headers={'Content-Type': 'application/json'}, method='POST')
+            with self.assertRaises(HTTPError) as ctx:
+                urlopen(req)
+            self.assertEqual(ctx.exception.code, 400)
+        finally:
+            server.shutdown(); server.server_close(); thread.join(timeout=2)
+
+
 
 if __name__ == '__main__':
     unittest.main()
