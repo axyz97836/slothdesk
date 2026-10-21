@@ -2,6 +2,7 @@
 import errno
 import json
 import os
+import shutil
 import tempfile
 import threading
 import unittest
@@ -10,6 +11,7 @@ from pathlib import Path
 from unittest.mock import patch
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
+
 
 
 
@@ -268,21 +270,21 @@ class SlothDeskTests(unittest.TestCase):
         self.assertEqual(contents, {'Content A', 'Content B'})
 
     def test_cross_filesystem_transfer_simulation(self):
-        """When atomic os.replace fails with EXDEV, safe_move_file falls back to staging and succeeds."""
+        """When atomic os.link fails with EXDEV, safe_move_file falls back to staging and succeeds."""
         (app.INBOX / 'cross_device.txt').write_text('Data across devices')
 
-        original_replace = os.replace
-        replace_calls = []
+        original_link = os.link
+        link_calls = []
 
-        def mock_replace(src, dst):
-            replace_calls.append((str(src), str(dst)))
+        def mock_link(src, dst):
+            link_calls.append((str(src), str(dst)))
             if 'cross_device.txt' in str(src) and '.tmp-' not in str(src):
                 err = OSError("Invalid cross-device link")
                 err.errno = errno.EXDEV
                 raise err
-            return original_replace(src, dst)
+            return original_link(src, dst)
 
-        with patch('os.replace', side_effect=mock_replace):
+        with patch('os.link', side_effect=mock_link):
             result = app.apply_plan([{'name': 'cross_device.txt', 'category': 'Study', 'suggested_name': 'cross_device.txt'}])
 
         self.assertEqual(len(result['moved']), 1)
@@ -291,24 +293,24 @@ class SlothDeskTests(unittest.TestCase):
         self.assertTrue(dest.exists())
         self.assertEqual(dest.read_text(), 'Data across devices')
         self.assertFalse((app.INBOX / 'cross_device.txt').exists())
-        self.assertTrue(any('.tmp-cross_device' in str(call[0]) for call in replace_calls))
+        self.assertTrue(any('.tmp-cross_device' in str(call[0]) for call in link_calls))
 
     def test_failure_during_cross_device_copy_cleans_up_and_preserves_source(self):
         """If shutil.copy2 fails during cross-filesystem move, staging file is cleaned up and source preserved."""
         (app.INBOX / 'copy_fail.txt').write_text('Valuable original')
 
-        def mock_replace(src, dst):
+        def mock_link(src, dst):
             if '.tmp-' not in str(src):
                 err = OSError("Invalid cross-device link")
                 err.errno = errno.EXDEV
                 raise err
-            return os.replace(src, dst)
+            return os.link(src, dst)
 
         def mock_copy2(src, dst):
             Path(dst).write_text('Incomplete data...')
             raise IOError("No space left on device")
 
-        with patch('os.replace', side_effect=mock_replace), patch('shutil.copy2', side_effect=mock_copy2):
+        with patch('os.link', side_effect=mock_link), patch('shutil.copy2', side_effect=mock_copy2):
             result = app.apply_plan([{'name': 'copy_fail.txt', 'category': 'Finance', 'suggested_name': 'report.txt'}])
 
         self.assertEqual(len(result['moved']), 0)
@@ -327,13 +329,13 @@ class SlothDeskTests(unittest.TestCase):
         """If removing source fails after copying, destination is rolled back and error reported."""
         (app.INBOX / 'unlink_fail.txt').write_text('Source cannot be unlinked')
 
-        original_replace = os.replace
-        def mock_replace(src, dst):
+        original_link = os.link
+        def mock_link(src, dst):
             if '.tmp-' not in str(src):
                 err = OSError("Invalid cross-device link")
                 err.errno = errno.EXDEV
                 raise err
-            return original_replace(src, dst)
+            return original_link(src, dst)
 
         original_unlink = os.unlink
         def mock_unlink(path, *args, **kwargs):
@@ -341,7 +343,7 @@ class SlothDeskTests(unittest.TestCase):
                 raise PermissionError("Permission denied: cannot delete source")
             return original_unlink(path, *args, **kwargs)
 
-        with patch('os.replace', side_effect=mock_replace), patch('os.unlink', side_effect=mock_unlink):
+        with patch('os.link', side_effect=mock_link), patch('os.unlink', side_effect=mock_unlink):
             result = app.apply_plan([{'name': 'unlink_fail.txt', 'category': 'Personal', 'suggested_name': 'doc.txt'}])
 
         self.assertEqual(len(result['moved']), 0)
@@ -351,6 +353,58 @@ class SlothDeskTests(unittest.TestCase):
         self.assertTrue((app.INBOX / 'unlink_fail.txt').exists())
         self.assertFalse((app.ORGANIZED / 'Personal' / 'doc.txt').exists())
         self.assertEqual(app.json_read_history(), [])
+
+    def test_toctou_same_filesystem_destination_created_after_check(self):
+        """If destination appears concurrently on same filesystem, atomic link refuses to overwrite."""
+        (app.INBOX / 'toctou_src.txt').write_text('Source content')
+        target = app.ORGANIZED / 'Study' / 'toctou_dst.txt'
+        (app.ORGANIZED / 'Study').mkdir(parents=True, exist_ok=True)
+
+        real_link = os.link
+        def race_link(s, d):
+            # Simulate another process creating target immediately before link
+            target.write_text('Concurrent file created by another process')
+            return real_link(s, d)
+
+        with patch('os.link', side_effect=race_link):
+            with self.assertRaises(FileExistsError):
+                app.safe_move_file(app.INBOX / 'toctou_src.txt', target)
+
+        self.assertEqual(target.read_text(), 'Concurrent file created by another process')
+        self.assertTrue((app.INBOX / 'toctou_src.txt').exists())
+        self.assertEqual((app.INBOX / 'toctou_src.txt').read_text(), 'Source content')
+
+    def test_toctou_cross_filesystem_destination_created_during_staging(self):
+        """If destination appears concurrently during cross-filesystem staging, commit refuses overwrite."""
+        (app.INBOX / 'staged_src.txt').write_text('Cross-device source')
+        target = app.ORGANIZED / 'Code' / 'staged_dst.txt'
+        (app.ORGANIZED / 'Code').mkdir(parents=True, exist_ok=True)
+
+        real_link = os.link
+        def mock_link(s, d):
+            if 'staged_src.txt' in str(s):
+                err = OSError("Invalid cross-device link")
+                err.errno = errno.EXDEV
+                raise err
+            return real_link(s, d)
+
+        real_copy2 = shutil.copy2
+        def mock_copy2(s, d):
+            res = real_copy2(s, d)
+            target.write_text('Concurrent external file')
+            return res
+
+        with patch('os.link', side_effect=mock_link), patch('shutil.copy2', side_effect=mock_copy2):
+            with self.assertRaises(FileExistsError):
+                app.safe_move_file(app.INBOX / 'staged_src.txt', target)
+
+        self.assertEqual(target.read_text(), 'Concurrent external file')
+        self.assertTrue((app.INBOX / 'staged_src.txt').exists())
+        self.assertEqual((app.INBOX / 'staged_src.txt').read_text(), 'Cross-device source')
+        staging_files = list((app.ORGANIZED / 'Code').glob('.tmp-*'))
+        self.assertEqual(staging_files, [])
+
+
 
 
     def test_history_consistency_after_failed_batch(self):

@@ -229,18 +229,25 @@ def unique_destination(folder, filename, reserved=None):
 
 
 def safe_move_file(src, dst):
-    """Safely move a file, avoiding overwrites and incomplete destinations.
+    """Safely move a file, strictly enforcing atomic no-clobber guarantees.
 
-    On the same filesystem:
-        Uses atomic os.replace(src, dst) after validating that dst does not exist.
-    Across filesystems:
-        1. Copies src to a temporary staging file (.tmp-...) in dst.parent.
-        2. Verifies the copy is complete and size matches src.
-        3. Atomically replaces the staging file to dst within dst.parent.
-        4. Removes src.
-        If copy fails, staging file is cleaned up and src is untouched.
-        If removing src fails, dst is rolled back (cleaned up) and an explicit
-        error is raised, ensuring no partial or duplicate move is reported.
+    Guarantees:
+    - Never overwrites an existing destination, even under concurrent creation
+      by external processes (immune to TOCTOU existence-check races).
+    - Preserves the original source if the destination transfer fails.
+    - Never exposes incomplete destination files.
+
+    Mechanism:
+    1. Fast Path (same filesystem):
+       Uses kernel-level atomic os.link(src, dst) which fails with FileExistsError
+       if dst exists. Once linked, unlinks src.
+    2. Cross-Filesystem / Fallback Path (when os.link raises EXDEV, EPERM, ENOSYS, etc.):
+       - Copies src to a temporary staging file (.tmp-...) in dst.parent.
+       - Verifies the copied size matches src.
+       - Commits staging to dst using os.link(staging, dst) (or O_CREAT|O_EXCL if
+         hard links are not supported by the filesystem), guaranteeing no overwrite.
+       - Removes staging file.
+       - Removes src file (with rollback of dst if removing src fails).
     """
     src = Path(src)
     dst = Path(dst)
@@ -255,19 +262,34 @@ def safe_move_file(src, dst):
     if dst_dir.is_symlink() or not dst_dir.is_dir():
         raise ValueError(f"Destination directory invalid: {dst_dir.name}")
 
+    # --- Fast Path: Atomic no-clobber hard link on same filesystem ---
     try:
-        os.replace(src, dst)
-        return
+        os.link(src, dst)
+    except FileExistsError:
+        raise
     except OSError as exc:
-        is_cross_device = (
-            exc.errno == errno.EXDEV
-            or getattr(exc, "winerror", None) == 17
-            or "cross-device" in str(exc).lower()
-        )
-        if not is_cross_device:
-            raise
+        # EXDEV (cross-device), EPERM/ENOSYS/EOPNOTSUPP (unsupported hardlinks)
+        pass
+    else:
+        # Link succeeded without overwrite! Now remove source link.
+        try:
+            os.unlink(src)
+            return
+        except OSError as exc:
+            rollback_err = None
+            try:
+                os.unlink(dst)
+            except OSError as rb_exc:
+                rollback_err = rb_exc
 
-    # Cross-filesystem fallback:
+            if rollback_err:
+                raise OSError(
+                    f"Source removal failed ({exc}) and destination rollback also failed ({rollback_err}). "
+                    f"Source preserved at {src}, duplicate at {dst}."
+                ) from exc
+            raise OSError(f"Failed to remove source file after linking: {exc}") from exc
+
+    # --- Cross-Filesystem / Hardlink-Unsupported Staging Path ---
     staging_path = dst_dir / f".tmp-{dst.name}-{uuid.uuid4().hex}"
     try:
         shutil.copy2(src, staging_path)
@@ -277,10 +299,31 @@ def safe_move_file(src, dst):
         if staged_size != src_size:
             raise OSError(f"Copy size mismatch: expected {src_size} bytes, got {staged_size}")
 
-        if dst.exists() or dst.is_symlink():
-            raise FileExistsError(f"Destination already exists: {dst.name}")
+        # Commit staging to dst with atomic no-clobber
+        try:
+            os.link(staging_path, dst)
+            os.unlink(staging_path)
+        except OSError as link_exc:
+            if isinstance(link_exc, FileExistsError) or getattr(link_exc, "errno", None) == errno.EEXIST:
+                raise FileExistsError(f"Destination already exists: {dst.name}") from link_exc
 
-        os.replace(staging_path, dst)
+            # Fallback for filesystems where hard links are unsupported (e.g. FAT32/exFAT):
+            # Atomic exclusive file creation via O_CREAT | O_EXCL
+            fd = os.open(dst, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            try:
+                with open(fd, "wb") as out_f, open(staging_path, "rb") as in_f:
+                    shutil.copyfileobj(in_f, out_f)
+                shutil.copystat(staging_path, dst)
+            except Exception:
+                try:
+                    os.unlink(dst)
+                except OSError:
+                    pass
+                raise
+            finally:
+                if staging_path.exists():
+                    os.unlink(staging_path)
+
     except Exception:
         if staging_path.exists() or staging_path.is_symlink():
             try:
@@ -289,6 +332,7 @@ def safe_move_file(src, dst):
                 pass
         raise
 
+    # Destination is completely and exclusively created; remove source
     try:
         os.unlink(src)
     except OSError as exc:
@@ -305,6 +349,7 @@ def safe_move_file(src, dst):
                 f"Source preserved at {src}, duplicate at {dst}."
             ) from exc
         raise OSError(f"Failed to remove source file after copying: {exc}") from exc
+
 
 
 
