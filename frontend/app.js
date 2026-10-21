@@ -5,8 +5,8 @@ const el = (id) => document.getElementById(id);
 
 // Application State
 const state = {
-  files: [],          // [{ name, size, supported, selected }]
-  suggestions: [],    // [{ name, category, suggested_name, summary, reason, selected, invalid }]
+  files: [],          // [{ name, size, supported, selected, analyzing, analysisStatus }]
+  suggestions: [],    // [{ name, category, suggested_name, summary, reason, selected, invalid, isNew }]
   organized: {},      // { CategoryName: count }
   batches: 0,
   history: [],        // recent batches from /api/history
@@ -90,6 +90,39 @@ function iconSvg(name) {
     alert: '<svg class="icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>'
   };
   return icons[name] || icons.file;
+}
+
+// Theme Management
+function initTheme() {
+  const current = document.documentElement.getAttribute('data-theme') || 'dark';
+  updateThemeUI(current);
+}
+
+function updateThemeUI(theme) {
+  const label = el('theme-toggle-label');
+  const icon = el('theme-icon');
+  if (label) {
+    label.textContent = theme === 'dark' ? 'Warm Paper' : 'Midnight Moss';
+  }
+  if (icon) {
+    if (theme === 'dark') {
+      icon.innerHTML = '<circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/>';
+    } else {
+      icon.innerHTML = '<path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>';
+    }
+  }
+  const metaTheme = document.querySelector('meta[name="theme-color"]');
+  if (metaTheme) {
+    metaTheme.content = theme === 'dark' ? '#111b1b' : '#f6f4ee';
+  }
+}
+
+function toggleTheme() {
+  const current = document.documentElement.getAttribute('data-theme') || 'dark';
+  const next = current === 'dark' ? 'light' : 'dark';
+  document.documentElement.setAttribute('data-theme', next);
+  localStorage.setItem('slothdesk-theme', next);
+  updateThemeUI(next);
 }
 
 function busy(flag) {
@@ -184,7 +217,9 @@ async function refresh() {
     const prevSelected = new Set(state.files.filter(f => f.selected).map(f => f.name));
     state.files = filesData.files.map(f => ({
       ...f,
-      selected: f.supported && (prevSelected.has(f.name) || (prevSelected.size === 0 && filesData.files.length <= 12))
+      selected: f.supported && (prevSelected.has(f.name) || (prevSelected.size === 0 && filesData.files.length <= 12)),
+      analyzing: false,
+      analysisStatus: null
     }));
 
     state.organized = statusData.organized;
@@ -276,7 +311,12 @@ function renderFiles() {
 
   for (const f of state.files) {
     const row = document.createElement('div');
-    row.className = `file-row ${f.selected ? 'selected' : ''} ${!f.supported ? 'unsupported' : ''}`;
+    let rowClasses = 'file-row';
+    if (f.selected) rowClasses += ' selected';
+    if (!f.supported) rowClasses += ' unsupported';
+    if (f.analyzing) rowClasses += ' file-row-analyzing';
+    row.className = rowClasses;
+    row.id = `file-row-${f.name.replace(/[^a-zA-Z0-9_-]/g, '_')}`;
 
     // 1. Checkbox
     const checkCol = document.createElement('div');
@@ -326,7 +366,17 @@ function renderFiles() {
     const statusCol = document.createElement('div');
     statusCol.className = 'file-row-status';
     const tag = document.createElement('span');
-    if (!f.supported) {
+
+    if (f.analyzing) {
+      tag.className = 'status-tag active-scan';
+      tag.textContent = 'Analyzing...';
+    } else if (f.analysisStatus === 'done') {
+      tag.className = 'status-tag ok';
+      tag.textContent = 'Analyzed';
+    } else if (f.analysisStatus === 'error') {
+      tag.className = 'status-tag warn';
+      tag.textContent = 'Error';
+    } else if (!f.supported) {
       tag.className = 'status-tag warn';
       tag.textContent = 'Exceeds 2 MB';
       tag.title = 'File exceeds the 2 MB local processing limit.';
@@ -350,6 +400,7 @@ function renderCategories() {
     const count = state.organized[name] || 0;
     const card = document.createElement('div');
     card.className = 'category-card';
+    card.id = `category-card-${name.toLowerCase()}`;
     card.setAttribute('role', 'listitem');
 
     const top = document.createElement('div');
@@ -383,6 +434,132 @@ function validateFilename(stem) {
   return null;
 }
 
+function createSuggestionCard(s) {
+  const card = document.createElement('article');
+  card.className = `review-card ${s.selected ? 'selected' : 'unselected'} ${s.isNew ? 'entering' : ''}`;
+
+  // Checkbox column
+  const checkWrap = document.createElement('div');
+  checkWrap.className = 'review-card-check';
+  const cb = document.createElement('input');
+  cb.type = 'checkbox';
+  cb.className = 'file-checkbox';
+  cb.checked = !!s.selected;
+  cb.setAttribute('aria-label', `Include ${s.name} in organization batch`);
+  cb.addEventListener('change', () => {
+    s.selected = cb.checked;
+    card.className = `review-card ${s.selected ? 'selected' : 'unselected'}`;
+    updateButtons();
+    const currentSelected = state.suggestions.filter(x => x.selected).length;
+    const reviewSummary = el('review-selection');
+    if (reviewSummary) {
+      reviewSummary.textContent = `${currentSelected} of ${state.suggestions.length} selected`;
+    }
+  });
+  checkWrap.append(cb);
+
+  // Body
+  const body = document.createElement('div');
+  body.className = 'review-card-body';
+
+  // Top: Source -> Destination Preview
+  const topRow = document.createElement('div');
+  topRow.className = 'review-card-top';
+
+  const origFile = document.createElement('span');
+  origFile.className = 'review-original-file';
+  origFile.innerHTML = iconSvg('file') + `<span>${s.name}</span>`;
+
+  const arrow = document.createElement('span');
+  arrow.innerHTML = iconSvg('arrow');
+
+  const destPreview = document.createElement('span');
+  destPreview.className = 'review-destination-preview';
+
+  function updatePreview() {
+    destPreview.textContent = `data/organized/${s.category}/${s.suggested_name}`;
+  }
+  updatePreview();
+
+  topRow.append(origFile, arrow, destPreview);
+
+  // Controls Grid (Category select + Filename input)
+  const fieldsGrid = document.createElement('div');
+  fieldsGrid.className = 'review-fields-grid';
+
+  // Category Selector
+  const catGroup = document.createElement('div');
+  catGroup.className = 'review-field-group';
+  const catLabel = document.createElement('label');
+  catLabel.className = 'review-field-label';
+  catLabel.textContent = 'Destination Category';
+  const catSelect = document.createElement('select');
+  catSelect.className = 'review-select';
+  catSelect.setAttribute('aria-label', `Destination category for ${s.name}`);
+  for (const c of CATEGORIES) {
+    const opt = document.createElement('option');
+    opt.value = c;
+    opt.textContent = c;
+    catSelect.append(opt);
+  }
+  catSelect.value = s.category;
+  catSelect.addEventListener('change', () => {
+    s.category = catSelect.value;
+    updatePreview();
+  });
+  catGroup.append(catLabel, catSelect);
+
+  // Filename Input with Validation
+  const nameGroup = document.createElement('div');
+  nameGroup.className = 'review-field-group';
+  const nameLabel = document.createElement('label');
+  nameLabel.className = 'review-field-label';
+  nameLabel.textContent = 'Suggested Filename';
+  const nameInput = document.createElement('input');
+  nameInput.type = 'text';
+  nameInput.className = 'review-input';
+  nameInput.value = s.suggested_name;
+  nameInput.maxLength = 120;
+  nameInput.setAttribute('aria-label', `Destination filename for ${s.name}`);
+
+  const errorMsg = document.createElement('div');
+  errorMsg.className = 'field-error-msg';
+
+  nameInput.addEventListener('input', () => {
+    s.suggested_name = nameInput.value;
+    const err = validateFilename(nameInput.value);
+    if (err) {
+      s.invalid = true;
+      nameInput.classList.add('invalid');
+      errorMsg.textContent = err;
+    } else {
+      s.invalid = false;
+      nameInput.classList.remove('invalid');
+      errorMsg.textContent = '';
+    }
+    updatePreview();
+    updateButtons();
+  });
+
+  nameGroup.append(nameLabel, nameInput, errorMsg);
+  fieldsGrid.append(catGroup, nameGroup);
+
+  // Details: Summary & Reasoning
+  const details = document.createElement('div');
+  details.className = 'review-card-details';
+  const sumP = document.createElement('p');
+  sumP.className = 'review-summary-text';
+  sumP.textContent = s.summary || 'No summary available.';
+  const whyP = document.createElement('p');
+  whyP.className = 'review-reason-text';
+  whyP.textContent = s.reason ? `Reason: ${s.reason}` : 'No AI reasoning provided.';
+  details.append(sumP, whyP);
+
+  body.append(topRow, fieldsGrid, details);
+  card.append(checkWrap, body);
+  return card;
+}
+
 function renderReview() {
   const root = el('review-list');
   if (!root) return;
@@ -405,7 +582,7 @@ function renderReview() {
     empty.className = 'empty-state';
     empty.innerHTML = `
       <p class="empty-state-title">No suggestions pending.</p>
-      <p class="empty-state-desc">Select inbox files above and click "Analyze selected" to generate organization proposals.</p>
+      <p class="empty-state-desc">Select inbox files on the left and click "Analyze selected" to generate organization proposals.</p>
     `;
     root.append(empty);
     updateButtons();
@@ -413,127 +590,7 @@ function renderReview() {
   }
 
   for (const s of state.suggestions) {
-    const card = document.createElement('article');
-    card.className = `review-card ${s.selected ? 'selected' : 'unselected'}`;
-
-    // Checkbox column
-    const checkWrap = document.createElement('div');
-    checkWrap.className = 'review-card-check';
-    const cb = document.createElement('input');
-    cb.type = 'checkbox';
-    cb.className = 'file-checkbox';
-    cb.checked = !!s.selected;
-    cb.setAttribute('aria-label', `Include ${s.name} in organization batch`);
-    cb.addEventListener('change', () => {
-      s.selected = cb.checked;
-      card.className = `review-card ${s.selected ? 'selected' : 'unselected'}`;
-      updateButtons();
-      const currentSelected = state.suggestions.filter(x => x.selected).length;
-      if (reviewSummary) {
-        reviewSummary.textContent = `${currentSelected} of ${state.suggestions.length} selected`;
-      }
-    });
-    checkWrap.append(cb);
-
-    // Body
-    const body = document.createElement('div');
-    body.className = 'review-card-body';
-
-    // Top: Source -> Destination Preview
-    const topRow = document.createElement('div');
-    topRow.className = 'review-card-top';
-
-    const origFile = document.createElement('span');
-    origFile.className = 'review-original-file';
-    origFile.innerHTML = iconSvg('file') + `<span>${s.name}</span>`;
-
-    const arrow = document.createElement('span');
-    arrow.innerHTML = iconSvg('arrow');
-
-    const destPreview = document.createElement('span');
-    destPreview.className = 'review-destination-preview';
-
-    function updatePreview() {
-      destPreview.textContent = `data/organized/${s.category}/${s.suggested_name}`;
-    }
-    updatePreview();
-
-    topRow.append(origFile, arrow, destPreview);
-
-    // Controls Grid (Category select + Filename input)
-    const fieldsGrid = document.createElement('div');
-    fieldsGrid.className = 'review-fields-grid';
-
-    // Category Selector
-    const catGroup = document.createElement('div');
-    catGroup.className = 'review-field-group';
-    const catLabel = document.createElement('label');
-    catLabel.className = 'review-field-label';
-    catLabel.textContent = 'Destination Category';
-    const catSelect = document.createElement('select');
-    catSelect.className = 'review-select';
-    catSelect.setAttribute('aria-label', `Destination category for ${s.name}`);
-    for (const c of CATEGORIES) {
-      const opt = document.createElement('option');
-      opt.value = c;
-      opt.textContent = c;
-      catSelect.append(opt);
-    }
-    catSelect.value = s.category;
-    catSelect.addEventListener('change', () => {
-      s.category = catSelect.value;
-      updatePreview();
-    });
-    catGroup.append(catLabel, catSelect);
-
-    // Filename Input with Validation
-    const nameGroup = document.createElement('div');
-    nameGroup.className = 'review-field-group';
-    const nameLabel = document.createElement('label');
-    nameLabel.className = 'review-field-label';
-    nameLabel.textContent = 'Suggested Filename';
-    const nameInput = document.createElement('input');
-    nameInput.type = 'text';
-    nameInput.className = 'review-input';
-    nameInput.value = s.suggested_name;
-    nameInput.maxLength = 120;
-    nameInput.setAttribute('aria-label', `Destination filename for ${s.name}`);
-
-    const errorMsg = document.createElement('div');
-    errorMsg.className = 'field-error-msg';
-
-    nameInput.addEventListener('input', () => {
-      s.suggested_name = nameInput.value;
-      const err = validateFilename(nameInput.value);
-      if (err) {
-        s.invalid = true;
-        nameInput.classList.add('invalid');
-        errorMsg.textContent = err;
-      } else {
-        s.invalid = false;
-        nameInput.classList.remove('invalid');
-        errorMsg.textContent = '';
-      }
-      updatePreview();
-      updateButtons();
-    });
-
-    nameGroup.append(nameLabel, nameInput, errorMsg);
-    fieldsGrid.append(catGroup, nameGroup);
-
-    // Details: Summary & Reasoning
-    const details = document.createElement('div');
-    details.className = 'review-card-details';
-    const sumP = document.createElement('p');
-    sumP.className = 'review-summary-text';
-    sumP.textContent = s.summary || 'No summary available.';
-    const whyP = document.createElement('p');
-    whyP.className = 'review-reason-text';
-    whyP.textContent = s.reason ? `Reason: ${s.reason}` : 'No AI reasoning provided.';
-    details.append(sumP, whyP);
-
-    body.append(topRow, fieldsGrid, details);
-    card.append(checkWrap, body);
+    const card = createSuggestionCard(s);
     root.append(card);
   }
 
@@ -614,42 +671,128 @@ async function loadSamples() {
   }
 }
 
+// Signature Local AI Analysis: Genuine per-file live progress and smooth card entry
 async function analyze() {
   const selected = state.files.filter(f => f.supported && f.selected);
   if (!selected.length) {
     toast('Select at least 1 file to analyze.', true);
     return;
   }
-  const names = selected.map(f => f.name);
+
   busy(true);
   const model = el('model-select') ? el('model-select').value : state.recommended_model;
-  toast(`Asking ${model} to analyze ${names.length} file(s) locally. Please wait...`);
+
+  // Show live analysis banner
+  const banner = el('analysis-banner');
+  const bannerTitle = el('analysis-title');
+  const bannerSubtext = el('analysis-subtext');
+  const bannerFill = el('analysis-progress-fill');
+
+  if (banner) {
+    banner.hidden = false;
+    if (bannerTitle) bannerTitle.textContent = 'Local AI Inference in Progress';
+    if (bannerSubtext) bannerSubtext.textContent = `Preparing ${selected.length} file(s)...`;
+    if (bannerFill) bannerFill.style.width = '0%';
+  }
+
+  // Clear previous suggestions for clean streaming
+  state.suggestions = [];
+  renderReview();
+
+  let completedCount = 0;
+  let errorCount = 0;
+  const startTime = Date.now();
 
   try {
-    const result = await request('/api/analyze', { files: names, model });
-    state.suggestions = (result.suggestions || []).map(s => ({
-      ...s,
-      selected: true,
-      invalid: !s.suggested_name || !s.suggested_name.trim()
-    }));
-    renderReview();
+    for (let i = 0; i < selected.length; i++) {
+      const file = selected[i];
 
-    const failureMsg = result.errors && result.errors.length
-      ? ` (${result.errors.length} file(s) could not be read)`
-      : '';
-    toast(`AI completed ${state.suggestions.length} proposal(s) in ${result.elapsed_seconds}s.${failureMsg}`, !!(result.errors && result.errors.length));
+      // Mark current file as analyzing
+      file.analyzing = true;
+      file.analysisStatus = 'processing';
+      renderFiles();
 
-    const reviewSection = el('review');
-    if (reviewSection) {
-      reviewSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      if (bannerSubtext) {
+        bannerSubtext.textContent = `Analyzing ${i + 1} of ${selected.length}: ${file.name}`;
+      }
+      if (bannerFill) {
+        bannerFill.style.width = `${Math.round((i / selected.length) * 100)}%`;
+      }
+
+      try {
+        // Real Ollama inference request for the single current file
+        const result = await request('/api/analyze', { files: [file.name], model });
+        if (result.suggestions && result.suggestions.length > 0) {
+          const proposal = {
+            ...result.suggestions[0],
+            selected: true,
+            invalid: false,
+            isNew: true
+          };
+          state.suggestions.push(proposal);
+
+          // Append recommendation card with restrained entrance animation
+          const reviewRoot = el('review-list');
+          if (reviewRoot) {
+            // Remove empty state if present
+            const emptyEl = reviewRoot.querySelector('.empty-state');
+            if (emptyEl) emptyEl.remove();
+
+            const card = createSuggestionCard(proposal);
+            reviewRoot.append(card);
+          }
+
+          file.analyzing = false;
+          file.analysisStatus = 'done';
+          completedCount++;
+        } else if (result.errors && result.errors.length > 0) {
+          file.analyzing = false;
+          file.analysisStatus = 'error';
+          errorCount++;
+          toast(`${file.name}: ${result.errors[0].message}`, true);
+        }
+      } catch (fileErr) {
+        file.analyzing = false;
+        file.analysisStatus = 'error';
+        errorCount++;
+        toast(`${file.name}: ${fileErr.message}`, true);
+      }
+
+      if (bannerFill) {
+        bannerFill.style.width = `${Math.round(((i + 1) / selected.length) * 100)}%`;
+      }
+      renderFiles();
+      updateButtons();
+      if (el('review-label')) el('review-label').textContent = state.suggestions.length;
+      if (el('stat-suggestions')) el('stat-suggestions').textContent = state.suggestions.length;
+      if (el('review-selection')) {
+        el('review-selection').textContent = `${state.suggestions.length} of ${state.suggestions.length} selected`;
+      }
     }
+
+    const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+    if (bannerSubtext) {
+      bannerSubtext.textContent = `Analysis complete: ${completedCount} proposal(s) generated in ${elapsed}s.`;
+    }
+    toast(`AI finished ${completedCount} proposal(s) in ${elapsed}s.${errorCount ? ' ' + errorCount + ' file(s) failed.' : ''}`, errorCount > 0);
+
+    setTimeout(() => {
+      if (banner) banner.hidden = true;
+    }, 1500);
+
   } catch (err) {
     toast(err.message, true);
+    if (banner) banner.hidden = true;
   } finally {
+    for (const f of state.files) {
+      f.analyzing = false;
+    }
+    renderFiles();
     busy(false);
   }
 }
 
+// File Organization Approval with Leaving & Bump Animations
 async function approve() {
   const toMove = state.suggestions.filter(s => s.selected && !s.invalid);
   if (!toMove.length) {
@@ -667,13 +810,35 @@ async function approve() {
   try {
     const result = await request('/api/apply', { items });
     const movedSet = new Set((result.moved || []).map(m => m.source));
+
+    // Animate moving rows out of the inbox table
+    for (const moved of result.moved || []) {
+      const rowId = `file-row-${moved.source.replace(/[^a-zA-Z0-9_-]/g, '_')}`;
+      const rowEl = el(rowId);
+      if (rowEl) {
+        rowEl.classList.add('file-row-leaving');
+      }
+
+      // Animate category card bump
+      const cat = moved.destination.split('/')[0];
+      const catCard = el(`category-card-${cat.toLowerCase()}`);
+      if (catCard) {
+        catCard.classList.remove('category-bump');
+        void catCard.offsetWidth; // Trigger reflow for re-animation
+        catCard.classList.add('category-bump');
+      }
+    }
+
+    // Wait 220ms for leaving animation to finish before updating state
+    await new Promise(resolve => setTimeout(resolve, 220));
+
     state.suggestions = state.suggestions.filter(s => !movedSet.has(s.name));
     await refresh();
 
     const movedCount = (result.moved || []).length;
-    const errorCount = (result.errors || []).length;
-    if (errorCount > 0) {
-      toast(`${movedCount} file(s) organized. ${errorCount} file(s) encountered conflicts and were kept in inbox.`, true);
+    const errCount = (result.errors || []).length;
+    if (errCount > 0) {
+      toast(`${movedCount} file(s) organized. ${errCount} file(s) encountered conflicts and were kept in inbox.`, true);
     } else {
       toast(`Successfully organized ${movedCount} file(s).`);
     }
@@ -703,9 +868,9 @@ async function undo() {
     await refresh();
 
     const restoredCount = (result.restored || []).length;
-    const errorCount = (result.errors || []).length;
-    if (errorCount > 0) {
-      toast(`Restored ${restoredCount} file(s) to inbox. ${errorCount} file(s) could not be restored due to existing files.`, true);
+    const errCount = (result.errors || []).length;
+    if (errCount > 0) {
+      toast(`Restored ${restoredCount} file(s) to inbox. ${errCount} file(s) could not be restored due to existing files.`, true);
     } else {
       toast(`Batch #${result.batch_id} undone: ${restoredCount} file(s) restored to inbox.`);
     }
@@ -784,6 +949,7 @@ function deselectAllReview() {
 }
 
 // Event Listeners
+if (el('theme-toggle-btn')) el('theme-toggle-btn').addEventListener('click', toggleTheme);
 if (el('refresh-button')) el('refresh-button').addEventListener('click', refresh);
 if (el('demo-button')) el('demo-button').addEventListener('click', loadSamples);
 if (el('analyze-button')) el('analyze-button').addEventListener('click', analyze);
@@ -795,5 +961,6 @@ if (el('deselect-all-inbox')) el('deselect-all-inbox').addEventListener('click',
 if (el('select-all-review')) el('select-all-review').addEventListener('click', selectAllReview);
 if (el('deselect-all-review')) el('deselect-all-review').addEventListener('click', deselectAllReview);
 
-// Initial Load
+// Initialization
+initTheme();
 refresh();

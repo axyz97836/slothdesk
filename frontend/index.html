@@ -1,17 +1,23 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#fafaf8">
+  <meta name="theme-color" content="#111b1b">
   <meta name="description" content="SlothDesk organizes your local files with open-weight AI. Private, local, and reliable.">
   <title>SlothDesk: Local AI File Organizer</title>
   <link rel="icon" type="image/svg+xml" href="/sloth.svg">
+  <script>
+    (function() {
+      const saved = localStorage.getItem('slothdesk-theme') || 'dark';
+      document.documentElement.setAttribute('data-theme', saved);
+    })();
+  </script>
   <link rel="stylesheet" href="/styles.css">
   <script src="/app.js" defer></script>
 </head>
 <body>
-  <!-- Header: Brand, Model Status, and Localhost Host Information -->
+  <!-- Header: Brand, Model Status, Theme Controls, and Localhost Host Information -->
   <header class="app-header">
     <div class="header-inner">
       <div class="brand-group">
@@ -23,7 +29,7 @@
           </div>
         </a>
       </div>
-      <div class="header-status">
+      <div class="header-actions">
         <div class="model-badge" id="model-badge">
           <div class="model-select-group">
             <label for="model-select" class="model-label">Model:</label>
@@ -42,6 +48,12 @@
           </svg>
           <span>Localhost:8765</span>
         </div>
+        <button type="button" class="theme-toggle-btn" id="theme-toggle-btn" aria-label="Toggle dark and light theme" title="Toggle theme">
+          <svg class="icon theme-icon-sun" id="theme-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/>
+          </svg>
+          <span id="theme-toggle-label">Warm Paper</span>
+        </button>
       </div>
     </div>
   </header>
@@ -53,123 +65,142 @@
     <span id="stat-suggestions" class="sr-only">0</span>
     <span id="nav-count" class="sr-only">0</span>
 
-    <!-- 1. Inbox Section -->
-    <section class="panel inbox-panel" id="inbox-section" aria-labelledby="inbox-title">
-      <div class="panel-header">
-        <div class="panel-header-title">
-          <h2 id="inbox-title" class="panel-title">
-            <svg class="panel-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <path d="M22 12h-6l-2 3h-4l-2-3H2v7a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-7Z"/>
-              <path d="M5.45 5.11 2 12v0h20v0l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/>
-            </svg>
-            <span>Inbox</span>
-            <span class="badge" id="inbox-label">0</span>
-          </h2>
-          <p class="panel-subtitle">Files located in <code>data/inbox/</code> ready for review.</p>
+    <!-- Two-Pane Primary Workspace on Desktop -->
+    <div class="workspace-twopane">
+      <!-- 1. Inbox Section (Left Pane) -->
+      <section class="panel inbox-panel" id="inbox-section" aria-labelledby="inbox-title">
+        <div class="panel-header">
+          <div class="panel-header-title">
+            <h2 id="inbox-title" class="panel-title">
+              <svg class="panel-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M22 12h-6l-2 3h-4l-2-3H2v7a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-7Z"/>
+                <path d="M5.45 5.11 2 12v0h20v0l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/>
+              </svg>
+              <span>Inbox</span>
+              <span class="badge" id="inbox-label">0</span>
+            </h2>
+            <p class="panel-subtitle">Files located in <code>data/inbox/</code> ready for review.</p>
+          </div>
+          <div class="panel-actions">
+            <button type="button" class="btn btn-secondary btn-sm" id="demo-button" title="Load fictional sample files to test sorting">
+              <svg class="icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+              </svg>
+              <span>Load sample files</span>
+            </button>
+            <button type="button" class="btn btn-secondary btn-sm btn-icon" id="refresh-button" aria-label="Refresh inbox" title="Refresh files from disk">
+              <svg class="icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/>
+              </svg>
+            </button>
+          </div>
         </div>
-        <div class="panel-actions">
-          <button type="button" class="btn btn-secondary btn-sm" id="demo-button" title="Load fictional sample files to test sorting">
-            <svg class="icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
-            </svg>
-            <span>Load sample files</span>
-          </button>
-          <button type="button" class="btn btn-secondary btn-sm btn-icon" id="refresh-button" aria-label="Refresh workspace" title="Refresh files from disk">
-            <svg class="icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/>
-            </svg>
-          </button>
-        </div>
-      </div>
 
-      <!-- Inbox Controls & Selection Toolbar -->
-      <div class="inbox-toolbar">
-        <div class="selection-tools">
-          <button type="button" class="btn-link" id="select-all-inbox">Select all</button>
-          <span class="sep" aria-hidden="true">·</span>
-          <button type="button" class="btn-link" id="deselect-all-inbox">Deselect all</button>
-          <span class="selection-count" id="inbox-selection-summary">0 of 0 files selected</span>
+        <!-- Inbox Controls & Selection Toolbar -->
+        <div class="inbox-toolbar">
+          <div class="selection-tools">
+            <button type="button" class="btn-link" id="select-all-inbox">Select all</button>
+            <span class="sep" aria-hidden="true">·</span>
+            <button type="button" class="btn-link" id="deselect-all-inbox">Deselect all</button>
+            <span class="selection-count" id="inbox-selection-summary">0 of 0 files selected</span>
+          </div>
+          <div class="analyze-group">
+            <button type="button" class="btn btn-primary" id="analyze-button" disabled title="Select at least 1 file to analyze">
+              <svg class="icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/>
+              </svg>
+              <span id="analyze-button-label">Analyze selected (0)</span>
+            </button>
+          </div>
         </div>
-        <div class="analyze-group">
-          <button type="button" class="btn btn-primary" id="analyze-button" disabled title="Select at least 1 file to analyze">
-            <svg class="icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/>
-            </svg>
-            <span id="analyze-button-label">Analyze selected (0)</span>
-          </button>
-        </div>
-      </div>
 
-      <!-- File List -->
-      <div class="file-table-wrap">
-        <div class="file-table-header" aria-hidden="true">
-          <div class="col-check"></div>
-          <div class="col-name">File Name</div>
-          <div class="col-type">Format</div>
-          <div class="col-size">Size</div>
-          <div class="col-status">Status</div>
+        <!-- File List -->
+        <div class="file-table-wrap">
+          <div class="file-table-header" aria-hidden="true">
+            <div class="col-check"></div>
+            <div class="col-name">File Name</div>
+            <div class="col-type">Format</div>
+            <div class="col-size">Size</div>
+            <div class="col-status">Status</div>
+          </div>
+          <div id="file-list" class="file-list" role="region" aria-label="Inbox files" aria-live="polite">
+            <div class="empty-state">Checking your local inbox...</div>
+          </div>
         </div>
-        <div id="file-list" class="file-list" role="region" aria-label="Inbox files" aria-live="polite">
-          <div class="empty-state">Checking your local inbox...</div>
+        <div class="panel-note">
+          <span>Supported formats: Markdown, Text, Python, JavaScript, HTML, JSON, CSV, YAML, Log (max 2 MB per file, max 12 files per batch).</span>
         </div>
-      </div>
-      <div class="panel-note">
-        <span>Supported formats: Markdown, Text, Python, JavaScript, HTML, JSON, CSV, YAML, Log (max 2 MB per file, max 12 files per batch).</span>
-      </div>
-    </section>
+      </section>
 
-    <!-- 2. AI Suggestions Section -->
-    <section class="panel review-panel" id="review" aria-labelledby="review-title">
-      <div class="panel-header">
-        <div class="panel-header-title">
-          <h2 id="review-title" class="panel-title">
-            <svg class="panel-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/>
-            </svg>
-            <span>AI Suggestions</span>
-            <span class="badge" id="review-label">0</span>
-          </h2>
-          <p class="panel-subtitle">Recommendations from the local model. Edit categories or filenames before approving. Nothing moves without confirmation.</p>
+      <!-- 2. AI Suggestions Section (The Centerpiece, Right Pane) -->
+      <section class="panel review-panel centerpiece" id="review" aria-labelledby="review-title">
+        <div class="panel-header">
+          <div class="panel-header-title">
+            <h2 id="review-title" class="panel-title">
+              <svg class="panel-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/>
+              </svg>
+              <span>AI Suggestions</span>
+              <span class="badge accent-badge" id="review-label">0</span>
+            </h2>
+            <p class="panel-subtitle">Recommendations from the local model. Edit categories or filenames before approving. Nothing moves without confirmation.</p>
+          </div>
+          <div class="panel-actions">
+            <button type="button" class="btn btn-secondary btn-sm" id="export-button" disabled title="Export suggestions as CSV">
+              <svg class="icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+              </svg>
+              <span>Export plan</span>
+            </button>
+          </div>
         </div>
-        <div class="panel-actions">
-          <button type="button" class="btn btn-secondary btn-sm" id="export-button" disabled title="Export suggestions as CSV">
-            <svg class="icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
-            </svg>
-            <span>Export plan</span>
-          </button>
-        </div>
-      </div>
 
-      <!-- Review Toolbar -->
-      <div class="review-toolbar">
-        <div class="selection-tools">
-          <button type="button" class="btn-link" id="select-all-review">Select all</button>
-          <span class="sep" aria-hidden="true">·</span>
-          <button type="button" class="btn-link" id="deselect-all-review">Deselect all</button>
-          <span class="selection-count" id="review-selection">No suggestions yet</span>
+        <!-- Signature Motion: Live AI Analysis Status Banner -->
+        <div id="analysis-banner" class="analysis-banner" hidden aria-live="polite">
+          <div class="analysis-banner-top">
+            <div class="analysis-banner-info">
+              <svg class="icon analysis-spinner" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
+              </svg>
+              <span class="analysis-title" id="analysis-title">Local AI Inference in Progress</span>
+            </div>
+            <span class="analysis-subtext" id="analysis-subtext">Preparing files...</span>
+          </div>
+          <div class="analysis-progress-track">
+            <div class="analysis-progress-fill" id="analysis-progress-fill" style="width: 0%"></div>
+          </div>
         </div>
-        <div class="approve-group">
-          <button type="button" class="btn btn-primary" id="apply-button" disabled>
-            <svg class="icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <polyline points="20 6 9 17 4 12"/>
-            </svg>
-            <span id="apply-button-label">Approve and organize (0)</span>
-          </button>
-        </div>
-      </div>
 
-      <!-- Review List -->
-      <div id="review-list" class="review-list" role="region" aria-label="Review AI suggestions">
-        <div class="empty-state">
-          <p class="empty-state-title">No suggestions pending.</p>
-          <p class="empty-state-desc">Select inbox files above and click "Analyze selected" to generate organization proposals.</p>
+        <!-- Review Toolbar -->
+        <div class="review-toolbar">
+          <div class="selection-tools">
+            <button type="button" class="btn-link" id="select-all-review">Select all</button>
+            <span class="sep" aria-hidden="true">·</span>
+            <button type="button" class="btn-link" id="deselect-all-review">Deselect all</button>
+            <span class="selection-count" id="review-selection">No suggestions yet</span>
+          </div>
+          <div class="approve-group">
+            <button type="button" class="btn btn-primary" id="apply-button" disabled>
+              <svg class="icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <polyline points="20 6 9 17 4 12"/>
+              </svg>
+              <span id="apply-button-label">Approve and organize (0)</span>
+            </button>
+          </div>
         </div>
-      </div>
-    </section>
 
-    <!-- Bottom Two-Column Grid: Organized Files & History/Undo -->
-    <div class="workspace-grid">
+        <!-- Review List -->
+        <div id="review-list" class="review-list" role="region" aria-label="Review AI suggestions">
+          <div class="empty-state">
+            <p class="empty-state-title">No suggestions pending.</p>
+            <p class="empty-state-desc">Select inbox files on the left and click "Analyze selected" to generate organization proposals.</p>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <!-- Secondary Grid: Organized Files & History/Undo -->
+    <div class="workspace-secondary">
       <!-- 3. Organized Files Section -->
       <section class="panel organized-panel" id="organized" aria-labelledby="organized-title">
         <div class="panel-header">
