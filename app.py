@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import errno
 import json
 import os
 import re
 import shutil
 import sys
+import threading
 import time
 import uuid
 from datetime import datetime, timezone
@@ -15,6 +17,19 @@ from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit
 from urllib.request import Request, urlopen
+
+# Synchronization primitive:
+# FS_LOCK serializes multi-step filesystem transactions (apply_plan, undo_last,
+# seed_demo) and history updates within this Python process.
+#
+# Synchronization Boundary & Limitations:
+# - IN-PROCESS: Protects concurrent HTTP request threads spawned by ThreadingHTTPServer
+#   from racing on inbox files, destination resolution, file moves, and history.json.
+# - MULTI-PROCESS LIMITATION: Does NOT protect against independent OS processes accessing
+#   the same DATA directory concurrently. SlothDesk is intentionally designed and bound
+#   as a single local daemon on 127.0.0.1.
+FS_LOCK = threading.RLock()
+
 
 ROOT = Path(__file__).resolve().parent
 DATA = Path(os.environ.get("SLOTHDESK_DATA_DIR", ROOT / "data")).expanduser().resolve()
@@ -48,20 +63,22 @@ def ensure_dirs():
 
 
 def json_read_history():
-    if not HISTORY.exists():
-        return []
-    try:
-        result = json.loads(HISTORY.read_text(encoding="utf-8"))
-        return result if isinstance(result, list) else []
-    except (OSError, ValueError):
-        return []
+    with FS_LOCK:
+        if not HISTORY.exists():
+            return []
+        try:
+            result = json.loads(HISTORY.read_text(encoding="utf-8"))
+            return result if isinstance(result, list) else []
+        except (OSError, ValueError):
+            return []
 
 
 def json_write_history(history):
-    HISTORY.parent.mkdir(parents=True, exist_ok=True)
-    tmp = HISTORY.with_name("history." + uuid.uuid4().hex + ".tmp")
-    tmp.write_text(json.dumps(history, indent=2), encoding="utf-8")
-    tmp.replace(HISTORY)
+    with FS_LOCK:
+        HISTORY.parent.mkdir(parents=True, exist_ok=True)
+        tmp = HISTORY.with_name("history." + uuid.uuid4().hex + ".tmp")
+        tmp.write_text(json.dumps(history, indent=2), encoding="utf-8")
+        tmp.replace(HISTORY)
 
 
 def accepted_file(name):
@@ -89,25 +106,28 @@ def checked_source(name):
 
 
 def list_inbox():
-    ensure_dirs()
-    files = []
-    for p in sorted(INBOX.iterdir(), key=lambda x: x.name.lower()):
-        if accepted_file(p.name) and p.is_file() and not p.is_symlink():
-            stat = p.stat()
-            files.append({"name": p.name, "size": stat.st_size, "supported": stat.st_size <= MAX_FILE_BYTES})
-    return files
+    with FS_LOCK:
+        ensure_dirs()
+        files = []
+        for p in sorted(INBOX.iterdir(), key=lambda x: x.name.lower()):
+            if accepted_file(p.name) and p.is_file() and not p.is_symlink():
+                stat = p.stat()
+                files.append({"name": p.name, "size": stat.st_size, "supported": stat.st_size <= MAX_FILE_BYTES})
+        return files
 
 
 def category_counts():
-    ensure_dirs()
-    out = {}
-    for category in CATEGORIES:
-        folder = ORGANIZED / category
-        if folder.exists() and folder.is_dir() and not folder.is_symlink():
-            out[category] = len([p for p in folder.iterdir() if p.is_file() and not p.is_symlink()])
-        else:
-            out[category] = 0
-    return out
+    with FS_LOCK:
+        ensure_dirs()
+        out = {}
+        for category in CATEGORIES:
+            folder = ORGANIZED / category
+            if folder.exists() and folder.is_dir() and not folder.is_symlink():
+                out[category] = len([p for p in folder.iterdir() if p.is_file() and not p.is_symlink()])
+            else:
+                out[category] = 0
+        return out
+
 
 
 def installed_models():
@@ -194,96 +214,187 @@ def analyze_one(name, model=DEFAULT_MODEL):
             "summary": summary, "reason": reason}
 
 
-def unique_destination(folder, filename):
+def unique_destination(folder, filename, reserved=None):
+    folder = Path(folder)
+    stem = Path(filename).stem
+    suffix = Path(filename).suffix
     target = folder / filename
     n = 2
-    while target.exists() or target.is_symlink():
-        target = folder / f"{Path(filename).stem}-{n}{Path(filename).suffix}"
+    while target.exists() or target.is_symlink() or (reserved is not None and target in reserved):
+        target = folder / f"{stem}-{n}{suffix}"
         n += 1
+    if reserved is not None:
+        reserved.add(target)
     return target
 
 
-def apply_plan(items):
-    ensure_dirs()
-    if not isinstance(items, list) or not 1 <= len(items) <= MAX_BATCH:
-        raise ValueError("Select between 1 and 12 suggested files")
-    if len({entry.get("name") for entry in items if isinstance(entry, dict)}) != len(items):
-        raise ValueError("A file may appear only once per batch")
-    moved = []
-    errors = []
-    for item in items:
+def safe_move_file(src, dst):
+    """Safely move a file, avoiding overwrites and incomplete destinations.
+
+    On the same filesystem:
+        Uses atomic os.replace(src, dst) after validating that dst does not exist.
+    Across filesystems:
+        1. Copies src to a temporary staging file (.tmp-...) in dst.parent.
+        2. Verifies the copy is complete and size matches src.
+        3. Atomically replaces the staging file to dst within dst.parent.
+        4. Removes src.
+        If copy fails, staging file is cleaned up and src is untouched.
+        If removing src fails, dst is rolled back (cleaned up) and an explicit
+        error is raised, ensuring no partial or duplicate move is reported.
+    """
+    src = Path(src)
+    dst = Path(dst)
+
+    if src.is_symlink() or not src.is_file():
+        raise ValueError(f"Source file missing or invalid: {src.name}")
+
+    if dst.exists() or dst.is_symlink():
+        raise FileExistsError(f"Destination already exists: {dst.name}")
+
+    dst_dir = dst.parent
+    if dst_dir.is_symlink() or not dst_dir.is_dir():
+        raise ValueError(f"Destination directory invalid: {dst_dir.name}")
+
+    try:
+        os.replace(src, dst)
+        return
+    except OSError as exc:
+        is_cross_device = (
+            exc.errno == errno.EXDEV
+            or getattr(exc, "winerror", None) == 17
+            or "cross-device" in str(exc).lower()
+        )
+        if not is_cross_device:
+            raise
+
+    # Cross-filesystem fallback:
+    staging_path = dst_dir / f".tmp-{dst.name}-{uuid.uuid4().hex}"
+    try:
+        shutil.copy2(src, staging_path)
+
+        src_size = src.stat().st_size
+        staged_size = staging_path.stat().st_size
+        if staged_size != src_size:
+            raise OSError(f"Copy size mismatch: expected {src_size} bytes, got {staged_size}")
+
+        if dst.exists() or dst.is_symlink():
+            raise FileExistsError(f"Destination already exists: {dst.name}")
+
+        os.replace(staging_path, dst)
+    except Exception:
+        if staging_path.exists() or staging_path.is_symlink():
+            try:
+                os.unlink(staging_path)
+            except OSError:
+                pass
+        raise
+
+    try:
+        os.unlink(src)
+    except OSError as exc:
+        rollback_err = None
         try:
-            if not isinstance(item, dict):
-                raise ValueError("Invalid proposal")
-            name = item.get("name")
-            category = item.get("category")
-            if category not in CATEGORIES:
-                raise ValueError("Invalid destination category")
-            src = checked_source(name)
-            requested = item.get("suggested_name", name)
-            if not isinstance(requested, str):
-                raise ValueError("Invalid suggested filename")
-            new_name = safe_stem(Path(requested).stem) + src.suffix.lower()
-            folder = ORGANIZED / category
-            if folder.is_symlink():
-                raise ValueError("Destination folder cannot be a symbolic link")
-            folder.mkdir(parents=True, exist_ok=True)
-            if not folder.resolve().is_relative_to(ORGANIZED.resolve()):
-                raise ValueError("Unsafe destination")
-            dst = unique_destination(folder, new_name)
-            shutil.move(str(src), str(dst))
-            moved.append({"source": name, "destination": str(dst.relative_to(ORGANIZED)), "undone": False})
-        except (ValueError, OSError, TypeError) as exc:
-            errors.append({"name": str(item.get("name", "unknown")) if isinstance(item, dict) else "unknown",
-                           "message": str(exc)})
-    if moved:
-        history = json_read_history()
-        batch = {"id": uuid.uuid4().hex[:12], "at": datetime.now(timezone.utc).isoformat(),
-                 "moves": moved, "undone": False}
-        history.append(batch)
-        json_write_history(history[-100:])
-    return {"moved": moved, "errors": errors}
+            if dst.exists() or dst.is_symlink():
+                os.unlink(dst)
+        except OSError as rb_exc:
+            rollback_err = rb_exc
+
+        if rollback_err:
+            raise OSError(
+                f"Source removal failed ({exc}) and destination rollback also failed ({rollback_err}). "
+                f"Source preserved at {src}, duplicate at {dst}."
+            ) from exc
+        raise OSError(f"Failed to remove source file after copying: {exc}") from exc
+
+
+
+def apply_plan(items):
+    with FS_LOCK:
+        ensure_dirs()
+        if not isinstance(items, list) or not 1 <= len(items) <= MAX_BATCH:
+            raise ValueError("Select between 1 and 12 suggested files")
+        if len({entry.get("name") for entry in items if isinstance(entry, dict)}) != len(items):
+            raise ValueError("A file may appear only once per batch")
+        moved = []
+        errors = []
+        reserved = set()
+        for item in items:
+            try:
+                if not isinstance(item, dict):
+                    raise ValueError("Invalid proposal")
+                name = item.get("name")
+                category = item.get("category")
+                if category not in CATEGORIES:
+                    raise ValueError("Invalid destination category")
+                src = checked_source(name)
+                requested = item.get("suggested_name", name)
+                if not isinstance(requested, str):
+                    raise ValueError("Invalid suggested filename")
+                new_name = safe_stem(Path(requested).stem) + src.suffix.lower()
+                folder = ORGANIZED / category
+                if folder.is_symlink():
+                    raise ValueError("Destination folder cannot be a symbolic link")
+                folder.mkdir(parents=True, exist_ok=True)
+                if not folder.resolve().is_relative_to(ORGANIZED.resolve()):
+                    raise ValueError("Unsafe destination")
+                dst = unique_destination(folder, new_name, reserved=reserved)
+                safe_move_file(src, dst)
+                moved.append({"source": name, "destination": str(dst.relative_to(ORGANIZED)), "undone": False})
+            except (ValueError, OSError, TypeError) as exc:
+                errors.append({"name": str(item.get("name", "unknown")) if isinstance(item, dict) else "unknown",
+                               "message": str(exc)})
+        if moved:
+            history = json_read_history()
+            batch = {"id": uuid.uuid4().hex[:12], "at": datetime.now(timezone.utc).isoformat(),
+                     "moves": moved, "undone": False}
+            history.append(batch)
+            json_write_history(history[-100:])
+        return {"moved": moved, "errors": errors}
 
 
 def undo_last():
-    ensure_dirs()
-    history = json_read_history()
-    batch = next((b for b in reversed(history) if not b.get("undone")), None)
-    if not batch:
-        raise ValueError("No organization batch to undo")
-    undone, errors = [], []
-    for move in batch["moves"]:
-        if move.get("undone"):
-            continue
-        dest_rel = move["destination"]
-        dest = ORGANIZED / dest_rel
-        original = INBOX / move["source"]
-        try:
-            if not Path(dest_rel).parts[0] in CATEGORIES or not dest.resolve().is_relative_to(ORGANIZED.resolve()):
-                raise ValueError("Unsafe history destination")
-            if dest.is_symlink() or not dest.is_file():
-                raise ValueError("Organized file not found")
-            if original.exists() or original.is_symlink():
-                raise ValueError("Original filename already exists; not overwriting")
-            shutil.move(str(dest), str(original))
-            move["undone"] = True
-            undone.append(move["source"])
-        except (ValueError, OSError) as exc:
-            errors.append({"name": move["source"], "message": str(exc)})
-    batch["undone"] = all(m.get("undone") for m in batch["moves"])
-    json_write_history(history)
-    return {"restored": undone, "errors": errors}
+    with FS_LOCK:
+        ensure_dirs()
+        history = json_read_history()
+        batch = next((b for b in reversed(history) if not b.get("undone")), None)
+        if not batch:
+            raise ValueError("No organization batch to undo")
+        undone, errors = [], []
+        for move in batch["moves"]:
+            if move.get("undone"):
+                continue
+            dest_rel = move["destination"]
+            dest = ORGANIZED / dest_rel
+            original = INBOX / move["source"]
+            try:
+                if not Path(dest_rel).parts[0] in CATEGORIES or not dest.resolve().is_relative_to(ORGANIZED.resolve()):
+                    raise ValueError("Unsafe history destination")
+                if dest.is_symlink() or not dest.is_file():
+                    raise ValueError("Organized file not found")
+                if original.exists() or original.is_symlink():
+                    raise ValueError("Original filename already exists; not overwriting")
+                if not original.resolve().is_relative_to(INBOX.resolve()):
+                    raise ValueError("Unsafe original destination")
+                safe_move_file(dest, original)
+                move["undone"] = True
+                undone.append(move["source"])
+            except (ValueError, OSError) as exc:
+                errors.append({"name": move["source"], "message": str(exc)})
+        batch["undone"] = all(m.get("undone") for m in batch["moves"])
+        json_write_history(history)
+        return {"restored": undone, "errors": errors}
 
 
 def seed_demo():
-    ensure_dirs()
-    created = []
-    for name, content in DEMO.items():
-        file = INBOX / name
-        if not file.exists() and not file.is_symlink():
-            file.write_text(content, encoding="utf-8")
-            created.append(name)
-    return created
+    with FS_LOCK:
+        ensure_dirs()
+        created = []
+        for name, content in DEMO.items():
+            file = INBOX / name
+            if not file.exists() and not file.is_symlink():
+                file.write_text(content, encoding="utf-8")
+                created.append(name)
+        return created
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -314,7 +425,11 @@ class Handler(BaseHTTPRequestHandler):
         return json.loads(self.rfile.read(length))
 
     def do_GET(self):
+        if len(self.path) > 1024:
+            self._send(414, {"error": "URI too long"})
+            return
         path = urlsplit(self.path).path
+
         if path in ("/", "/index.html", "/styles.css", "/app.js", "/sloth.svg"):
             filename = "index.html" if path == "/" else path.lstrip("/")
             mime = {"index.html": "text/html; charset=utf-8", "styles.css": "text/css; charset=utf-8",
