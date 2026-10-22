@@ -33,9 +33,14 @@ A normal extension-based organizer would put every `.txt` file into the same buc
 
 ## Code
 
-**Source:** [ADD your public GitHub repository URL]
+**Source:** https://github.com/axyz97836/slothdesk
 
-The app has no cloud API key and no Python package dependencies. The backend uses Python's standard library; the frontend is plain HTML, CSS, and JavaScript. Tests can run with `python3 -m unittest discover -s tests -v`.
+The app has no cloud API key and no Python package dependencies. The backend uses Python's standard library; the frontend is plain HTML, CSS, and JavaScript. The test suite includes 38 automated tests covering filesystem safety, atomic moves, undo verification, and error recovery.
+
+```bash
+# Run tests
+python3 -m unittest discover -s tests -v
+```
 
 ## How I Built It
 
@@ -52,18 +57,27 @@ Structured JSON: category + filename + summary + reason
        ↓
 Browser review screen (human approval)
        ↓
-Local file move + history record + optional undo
+Atomic file move + history record + optional undo
 ```
 
 I chose **Qwen2.5 1.5B**, an open-weight model in the Apache-2.0-licensed Qwen2.5 family, running through **Ollama**. The model fits into a much smaller local download than larger LLMs, making an offline-first workflow more practical for a student laptop.
 
 The Python server runs on `127.0.0.1`, talks only to Ollama on `127.0.0.1:11434`, and never sends file content to a hosted LLM. The UI has no external fonts, trackers, scripts, or API integrations.
 
-I didn't want the model to become a filesystem administrator. SlothDesk enforces a category allowlist, sanitizes AI-suggested filenames, keeps original extensions, rejects symbolic links and unsafe paths, and handles collisions without overwriting files. The model doesn't control tools directly: **it suggests; the user decides**.
+### Filesystem safety
 
-I also built in an undo log. It's not magic time travel — if someone has changed or replaced a file afterward, SlothDesk refuses to overwrite it when undoing.
+I didn't want the model to become a filesystem administrator. SlothDesk enforces:
 
-The project includes **12 automated tests** for file moves, undo, collision handling, path rejection, and error cases. These are code tests with a simulated model response, so the live inference demo separately validates the real Ollama integration.
+- **Atomic no-clobber moves**: same-filesystem paths use `os.link()` + `os.unlink()` to prevent partial transfers. Cross-filesystem moves stage into a temporary file before atomic commit.
+- **Inode-verified undo**: rollback checks `st_ino` and `st_dev` before restoring, so files replaced externally are never silently overwritten.
+- **Process locking**: advisory file lock prevents multiple SlothDesk daemons on the same data directory.
+- **Category allowlist, filename sanitization**, symlink rejection, and path traversal prevention.
+
+The model doesn't control tools directly: **it suggests; the user decides**.
+
+### Design
+
+The interface ships with two themes — **Warm Ivory** (light) and **Emerald Night** (dark) — built around an emerald green + vermilion accent palette. Both meet WCAG 2.2 AA contrast. Keyboard shortcuts (`Alt+A` through `Alt+Z`, `?` for help) keep the workflow fast without requiring a mouse.
 
 ## Why Does Open Innovation Matter?
 

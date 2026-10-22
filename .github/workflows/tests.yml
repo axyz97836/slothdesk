@@ -14,5 +14,7 @@ jobs:
           python-version: '3.11'
       - name: Test backend
         run: python3 -m unittest discover -s tests -v
-      - name: Check syntax
+      - name: Check Python syntax
         run: python3 -m py_compile app.py
+      - name: Check JavaScript syntax
+        run: node --check frontend/app.js
