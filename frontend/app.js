@@ -124,9 +124,9 @@ function iconSvg(name) {
   return icons[name] || icons.file;
 }
 
-// Theme Management
+// Theme Management: Default Warm Ivory (light) and Emerald Night (dark)
 function initTheme() {
-  const current = document.documentElement.getAttribute('data-theme') || 'dark';
+  const current = document.documentElement.getAttribute('data-theme') || 'light';
   updateThemeUI(current);
 }
 
@@ -134,7 +134,7 @@ function updateThemeUI(theme) {
   const label = el('theme-toggle-label');
   const icon = el('theme-icon');
   if (label) {
-    label.textContent = theme === 'dark' ? 'Warm Paper' : 'Midnight Moss';
+    label.textContent = theme === 'dark' ? 'Warm Ivory' : 'Emerald Night';
   }
   if (icon) {
     if (theme === 'dark') {
@@ -145,12 +145,12 @@ function updateThemeUI(theme) {
   }
   const metaTheme = document.querySelector('meta[name="theme-color"]');
   if (metaTheme) {
-    metaTheme.content = theme === 'dark' ? '#111b1b' : '#f6f4ee';
+    metaTheme.content = theme === 'dark' ? '#101C19' : '#F7F3EA';
   }
 }
 
 function toggleTheme() {
-  const current = document.documentElement.getAttribute('data-theme') || 'dark';
+  const current = document.documentElement.getAttribute('data-theme') || 'light';
   const next = current === 'dark' ? 'light' : 'dark';
   document.documentElement.setAttribute('data-theme', next);
   localStorage.setItem('slothdesk-theme', next);
@@ -181,9 +181,9 @@ function updateButtons() {
     if (!state.connected) {
       analyzeBtn.title = 'Local Ollama model is unavailable. Start Ollama to analyze files.';
     } else if (selectedCount === 0) {
-      analyzeBtn.title = 'Select at least 1 file from the inbox to analyze (up to 12 files per batch).';
+      analyzeBtn.title = 'Select at least 1 file from the inbox to analyze (Alt+A).';
     } else {
-      analyzeBtn.title = `Analyze ${selectedCount} selected file(s) with local AI.`;
+      analyzeBtn.title = `Analyze ${selectedCount} selected file(s) with local AI (Alt+A).`;
     }
   }
 
@@ -199,9 +199,18 @@ function updateButtons() {
 
   // Other buttons
   if (el('demo-button')) el('demo-button').disabled = state.working;
-  if (el('refresh-button')) el('refresh-button').disabled = state.working;
-  if (el('select-all-inbox')) el('select-all-inbox').disabled = state.working || supportedCount === 0;
-  if (el('deselect-all-inbox')) el('deselect-all-inbox').disabled = state.working || selectedCount === 0;
+  if (el('refresh-button')) {
+    el('refresh-button').disabled = state.working;
+    el('refresh-button').title = 'Refresh inbox and categories (Alt+R)';
+  }
+  if (el('select-all-inbox')) {
+    el('select-all-inbox').disabled = state.working || supportedCount === 0;
+    el('select-all-inbox').title = 'Select all supported inbox files (Alt+S)';
+  }
+  if (el('deselect-all-inbox')) {
+    el('deselect-all-inbox').disabled = state.working || selectedCount === 0;
+    el('deselect-all-inbox').title = 'Deselect all inbox files (Alt+D)';
+  }
 
   // Suggestions Review Buttons
   const selectedSuggestions = state.suggestions.filter(s => s.selected);
@@ -214,9 +223,9 @@ function updateButtons() {
     if (hasInvalid) {
       applyBtn.title = 'Please correct invalid filenames before approving.';
     } else if (selectedSuggestions.length === 0) {
-      applyBtn.title = 'Select at least 1 suggestion to approve.';
+      applyBtn.title = 'Select at least 1 suggestion to approve (Alt+O).';
     } else {
-      applyBtn.title = `Move ${selectedSuggestions.length} approved file(s) to data/organized/`;
+      applyBtn.title = `Move ${selectedSuggestions.length} approved file(s) to data/organized/ (Alt+O)`;
     }
   }
 
@@ -234,6 +243,9 @@ function updateButtons() {
   const activeBatch = state.history.find(b => !b.undone);
   if (el('undo-button')) {
     el('undo-button').disabled = state.working || !activeBatch;
+    el('undo-button').title = activeBatch
+      ? `Undo batch #${activeBatch.id} (${activeBatch.moves ? activeBatch.moves.length : 0} files) (Alt+Z)`
+      : 'No active batches to undo (Alt+Z)';
   }
 }
 
@@ -1090,6 +1102,83 @@ function deselectAllReview() {
   renderReview();
 }
 
+// Keyboard Shortcuts Modal Management
+let lastFocusedBeforeDialog = null;
+
+function openShortcutsDialog() {
+  const dialog = el('shortcuts-dialog');
+  if (!dialog) return;
+  lastFocusedBeforeDialog = document.activeElement;
+  if (typeof dialog.showModal === 'function') {
+    dialog.showModal();
+  } else {
+    dialog.setAttribute('open', '');
+  }
+  const closeBtn = el('shortcuts-dialog-close');
+  if (closeBtn) closeBtn.focus();
+}
+
+function closeShortcutsDialog() {
+  const dialog = el('shortcuts-dialog');
+  if (!dialog) return;
+  if (typeof dialog.close === 'function') {
+    dialog.close();
+  } else {
+    dialog.removeAttribute('open');
+  }
+  if (lastFocusedBeforeDialog && typeof lastFocusedBeforeDialog.focus === 'function') {
+    lastFocusedBeforeDialog.focus();
+  }
+}
+
+// Global Keyboard Shortcuts
+function handleGlobalKeydown(e) {
+  const active = document.activeElement;
+  const isInput = active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.tagName === 'SELECT' || active.isContentEditable);
+
+  // '?' or '/' key toggles shortcuts dialog (when not in an input)
+  if ((e.key === '?' || e.key === '/') && !isInput && !e.altKey && !e.ctrlKey && !e.metaKey) {
+    e.preventDefault();
+    const dialog = el('shortcuts-dialog');
+    if (dialog && dialog.open) {
+      closeShortcutsDialog();
+    } else {
+      openShortcutsDialog();
+    }
+    return;
+  }
+
+  // Alt + key shortcuts (avoids browser collisions)
+  if (e.altKey && !e.ctrlKey && !e.metaKey) {
+    const key = e.key.toLowerCase();
+    if (key === 'a') {
+      e.preventDefault();
+      const analyzeBtn = el('analyze-button');
+      if (analyzeBtn && !analyzeBtn.disabled) analyze();
+    } else if (key === 'o') {
+      e.preventDefault();
+      const applyBtn = el('apply-button');
+      if (applyBtn && !applyBtn.disabled) approve();
+    } else if (key === 's') {
+      e.preventDefault();
+      selectAllInbox();
+    } else if (key === 'd') {
+      e.preventDefault();
+      deselectAllInbox();
+    } else if (key === 'r') {
+      e.preventDefault();
+      refresh();
+    } else if (key === 'z') {
+      e.preventDefault();
+      const undoBtn = el('undo-button');
+      if (undoBtn && !undoBtn.disabled) undo();
+    } else if (key === 't') {
+      e.preventDefault();
+      toggleTheme();
+    }
+  }
+}
+
 // Event Listeners
 if (el('theme-toggle-btn')) el('theme-toggle-btn').addEventListener('click', toggleTheme);
 if (el('refresh-button')) el('refresh-button').addEventListener('click', refresh);
@@ -1104,6 +1193,22 @@ if (el('retry-failed-btn')) el('retry-failed-btn').addEventListener('click', ret
 if (el('error-alert-close')) el('error-alert-close').addEventListener('click', hideErrorAlert);
 if (el('select-all-review')) el('select-all-review').addEventListener('click', selectAllReview);
 if (el('deselect-all-review')) el('deselect-all-review').addEventListener('click', deselectAllReview);
+if (el('shortcuts-btn')) el('shortcuts-btn').addEventListener('click', openShortcutsDialog);
+if (el('shortcuts-dialog-close')) el('shortcuts-dialog-close').addEventListener('click', closeShortcutsDialog);
+if (el('shortcuts-dialog-dismiss')) el('shortcuts-dialog-dismiss').addEventListener('click', closeShortcutsDialog);
+
+const shortcutsDialog = el('shortcuts-dialog');
+if (shortcutsDialog) {
+  shortcutsDialog.addEventListener('click', (e) => {
+    if (e.target === shortcutsDialog) closeShortcutsDialog();
+  });
+  shortcutsDialog.addEventListener('cancel', (e) => {
+    e.preventDefault();
+    closeShortcutsDialog();
+  });
+}
+
+window.addEventListener('keydown', handleGlobalKeydown);
 
 if (el('model-select')) {
   el('model-select').addEventListener('change', (e) => {
