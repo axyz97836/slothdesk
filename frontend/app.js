@@ -1135,18 +1135,35 @@ function closeShortcutsDialog() {
 function handleGlobalKeydown(e) {
   const active = document.activeElement;
   const isInput = active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.tagName === 'SELECT' || active.isContentEditable);
+  const dialog = el('shortcuts-dialog');
+  const isDialogOpen = dialog && dialog.open;
 
-  // '?' or '/' key toggles shortcuts dialog (when not in an input)
-  if ((e.key === '?' || e.key === '/') && !isInput && !e.altKey && !e.ctrlKey && !e.metaKey) {
+  // Never trigger application shortcuts when user is typing in inputs or editing filenames
+  if (isInput) return;
+
+  // 'Escape' closes error alert if dialog is not open
+  if (e.key === 'Escape' && !isDialogOpen) {
+    const errorAlert = el('error-alert');
+    if (errorAlert && !errorAlert.hidden) {
+      e.preventDefault();
+      hideErrorAlert();
+      return;
+    }
+  }
+
+  // '?' or '/' key toggles shortcuts dialog
+  if ((e.key === '?' || e.key === '/') && !e.altKey && !e.ctrlKey && !e.metaKey) {
     e.preventDefault();
-    const dialog = el('shortcuts-dialog');
-    if (dialog && dialog.open) {
+    if (isDialogOpen) {
       closeShortcutsDialog();
     } else {
       openShortcutsDialog();
     }
     return;
   }
+
+  // Do not fire action shortcuts while a modal dialog is active
+  if (isDialogOpen) return;
 
   // Alt + key shortcuts (avoids browser collisions)
   if (e.altKey && !e.ctrlKey && !e.metaKey) {

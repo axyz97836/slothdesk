@@ -275,19 +275,26 @@ def safe_move_file(src, dst):
     else:
         # Link succeeded without overwrite! Now remove source link.
         try:
+            src_stat = src.stat()
             os.unlink(src)
             return
         except OSError as exc:
             rollback_err = None
             try:
-                os.unlink(dst)
+                if dst.exists() and not dst.is_symlink():
+                    dst_stat = dst.stat()
+                    # Only rollback if dst still points to the exact inode created by SlothDesk
+                    if dst_stat.st_ino == src_stat.st_ino and dst_stat.st_dev == src_stat.st_dev:
+                        os.unlink(dst)
+                    else:
+                        rollback_err = OSError("Destination was replaced by an external process; preserved")
             except OSError as rb_exc:
                 rollback_err = rb_exc
 
             if rollback_err:
                 raise OSError(
-                    f"Source removal failed ({exc}) and destination rollback also failed ({rollback_err}). "
-                    f"Source preserved at {src}, duplicate at {dst}."
+                    f"Source removal failed ({exc}) and destination rollback aborted ({rollback_err}). "
+                    f"Source preserved at {src}, destination preserved at {dst}."
                 ) from exc
             raise OSError(f"Failed to remove source file after linking: {exc}") from exc
 
@@ -305,6 +312,7 @@ def safe_move_file(src, dst):
         try:
             os.link(staging_path, dst)
             os.unlink(staging_path)
+            committed_stat = dst.stat()
         except OSError as link_exc:
             if isinstance(link_exc, FileExistsError) or getattr(link_exc, "errno", None) == errno.EEXIST:
                 raise FileExistsError(f"Destination already exists: {dst.name}") from link_exc
@@ -316,6 +324,7 @@ def safe_move_file(src, dst):
                 with open(fd, "wb") as out_f, open(staging_path, "rb") as in_f:
                     shutil.copyfileobj(in_f, out_f)
                 shutil.copystat(staging_path, dst)
+                committed_stat = dst.stat()
             except Exception:
                 try:
                     os.unlink(dst)
@@ -340,15 +349,20 @@ def safe_move_file(src, dst):
     except OSError as exc:
         rollback_err = None
         try:
-            if dst.exists() or dst.is_symlink():
-                os.unlink(dst)
+            if dst.exists() and not dst.is_symlink():
+                dst_stat = dst.stat()
+                # Only rollback if dst still points to the exact file created by SlothDesk
+                if dst_stat.st_ino == committed_stat.st_ino and dst_stat.st_dev == committed_stat.st_dev:
+                    os.unlink(dst)
+                else:
+                    rollback_err = OSError("Destination was replaced by an external process; preserved")
         except OSError as rb_exc:
             rollback_err = rb_exc
 
         if rollback_err:
             raise OSError(
-                f"Source removal failed ({exc}) and destination rollback also failed ({rollback_err}). "
-                f"Source preserved at {src}, duplicate at {dst}."
+                f"Source removal failed ({exc}) and destination rollback aborted ({rollback_err}). "
+                f"Source preserved at {src}, destination preserved at {dst}."
             ) from exc
         raise OSError(f"Failed to remove source file after copying: {exc}") from exc
 
@@ -542,8 +556,38 @@ class Handler(BaseHTTPRequestHandler):
             self._send(500, {"error": "An unexpected local filesystem error occurred"})
 
 
+def acquire_process_lock(data_dir=DATA):
+    """Acquires an advisory file lock on data_dir/.slothdesk.lock.
+
+    Returns the open lock file object. If another server process holds the lock,
+    raises BlockingIOError to cleanly prevent multiple servers corrupting
+    the same data directory.
+    """
+    data_dir = Path(data_dir)
+    data_dir.mkdir(parents=True, exist_ok=True)
+    lock_path = data_dir / ".slothdesk.lock"
+    lock_file = open(lock_path, "a+")
+    try:
+        import fcntl
+        fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except (ImportError, AttributeError):
+        pass  # On non-POSIX systems without fcntl, fallback to in-process FS_LOCK
+    except Exception:
+        lock_file.close()
+        raise
+    return lock_file
+
+
 def main():
     ensure_dirs()
+    try:
+        lock_file = acquire_process_lock()
+    except (BlockingIOError, OSError):
+        print(f"\n[Error] Another SlothDesk server process is already running against data directory:\n  {DATA}\n"
+              f"Running multiple server instances against the same data directory is not supported.\n",
+              file=sys.stderr)
+        sys.exit(1)
+
     httpd = ThreadingHTTPServer((HOST, PORT), Handler)
     print(f"\nSlothDesk is ready: http://{HOST}:{PORT}\n")
     print("Local-only server. Press Ctrl+C to stop.")
@@ -553,6 +597,10 @@ def main():
         print("\nGoodbye. Stay slow.")
     finally:
         httpd.server_close()
+        try:
+            lock_file.close()
+        except Exception:
+            pass
 
 
 if __name__ == "__main__":

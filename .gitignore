@@ -8,3 +8,7 @@ data/inbox/*
 data/organized/*
 !data/organized/.gitkeep
 data/history.json
+data/.slothdesk.lock
+.slothdesk.lock
+*.tmp
+.coverage

@@ -672,6 +672,80 @@ class SlothDeskTests(unittest.TestCase):
         self.assertEqual(len(res['errors']), 1)
         self.assertEqual(res['errors'][0]['name'], 'orig.txt')
 
+    def test_rollback_preserves_externally_replaced_destination(self):
+        """If destination was replaced by an external process, rollback must NOT delete it."""
+        src = app.INBOX / 'keep_src.txt'
+        src.write_text('Original source content')
+        dst = app.ORGANIZED / 'Code' / 'keep_src.txt'
+        (app.ORGANIZED / 'Code').mkdir(parents=True, exist_ok=True)
+
+        original_unlink = os.unlink
+        def race_unlink(path, *args, **kwargs):
+            if 'keep_src.txt' in str(path) and str(path) == str(src):
+                # Simulate external process replacing destination with its own file
+                original_unlink(dst)
+                dst.write_text('External file content created concurrently')
+                raise PermissionError("Simulated permission error on source unlink")
+            return original_unlink(path, *args, **kwargs)
+
+        with patch('os.unlink', side_effect=race_unlink):
+            with self.assertRaises(OSError) as ctx:
+                app.safe_move_file(src, dst)
+
+        self.assertIn('rollback aborted', str(ctx.exception).lower())
+        self.assertTrue(src.exists())
+        self.assertTrue(dst.exists())
+        self.assertEqual(dst.read_text(), 'External file content created concurrently')
+
+    def test_cross_filesystem_rollback_preserves_externally_replaced_destination(self):
+        """Cross-filesystem rollback preserves destination if replaced by an external process."""
+        src = app.INBOX / 'xdev_src.txt'
+        src.write_text('Cross-device source content')
+        dst = app.ORGANIZED / 'Study' / 'xdev_src.txt'
+        (app.ORGANIZED / 'Study').mkdir(parents=True, exist_ok=True)
+
+        original_link = os.link
+        def mock_link(s, d):
+            if '.tmp-' not in str(s):
+                err = OSError("Invalid cross-device link")
+                err.errno = errno.EXDEV
+                raise err
+            return original_link(s, d)
+
+        original_unlink = os.unlink
+        def mock_unlink(path, *args, **kwargs):
+            if str(path) == str(src):
+                original_unlink(dst)
+                dst.write_text('External replacement file')
+                raise PermissionError("Simulated failure to delete source")
+            return original_unlink(path, *args, **kwargs)
+
+        with patch('os.link', side_effect=mock_link), patch('os.unlink', side_effect=mock_unlink):
+            with self.assertRaises(OSError) as ctx:
+                app.safe_move_file(src, dst)
+
+        self.assertIn('rollback aborted', str(ctx.exception).lower())
+        self.assertTrue(src.exists())
+        self.assertTrue(dst.exists())
+        self.assertEqual(dst.read_text(), 'External replacement file')
+
+    def test_process_lock_guards_concurrent_instances(self):
+        """Process lock ensures two servers cannot run against the same data directory."""
+        temp_data = Path(tempfile.mkdtemp())
+        try:
+            lock1 = app.acquire_process_lock(temp_data)
+            self.assertIsNotNone(lock1)
+            # Second attempt while lock1 is held must raise BlockingIOError or OSError
+            with self.assertRaises((BlockingIOError, OSError)):
+                app.acquire_process_lock(temp_data)
+            # After releasing, acquisition succeeds
+            lock1.close()
+            lock2 = app.acquire_process_lock(temp_data)
+            self.assertIsNotNone(lock2)
+            lock2.close()
+        finally:
+            shutil.rmtree(temp_data, ignore_errors=True)
+
 
 if __name__ == '__main__':
     unittest.main()
