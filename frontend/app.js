@@ -45,6 +45,38 @@ function toast(message, isError = false) {
   }, 5000);
 }
 
+function showErrorAlert(title, message, actionText, actionFn) {
+  const alertEl = el('error-alert');
+  const titleEl = el('error-alert-title');
+  const msgEl = el('error-alert-message');
+  const actionBtn = el('error-alert-action');
+  if (!alertEl || !titleEl || !msgEl) return;
+
+  titleEl.textContent = title || 'System Alert';
+  msgEl.textContent = message || '';
+
+  if (actionBtn) {
+    if (actionText && typeof actionFn === 'function') {
+      actionBtn.textContent = actionText;
+      actionBtn.hidden = false;
+      actionBtn.onclick = () => {
+        hideErrorAlert();
+        actionFn();
+      };
+    } else {
+      actionBtn.hidden = true;
+      actionBtn.onclick = null;
+    }
+  }
+
+  alertEl.hidden = false;
+}
+
+function hideErrorAlert() {
+  const alertEl = el('error-alert');
+  if (alertEl) alertEl.hidden = true;
+}
+
 async function request(url, data) {
   const opts = data === undefined
     ? {}
@@ -213,14 +245,18 @@ async function refresh() {
       request('/api/history')
     ]);
 
-    // Preserve previous file selection where applicable
-    const prevSelected = new Set(state.files.filter(f => f.selected).map(f => f.name));
-    state.files = filesData.files.map(f => ({
-      ...f,
-      selected: f.supported && (prevSelected.has(f.name) || (prevSelected.size === 0 && filesData.files.length <= 12)),
-      analyzing: false,
-      analysisStatus: null
-    }));
+    // Preserve previous file selection, analysisStatus, and errorReason where applicable
+    const prevMap = new Map(state.files.map(f => [f.name, f]));
+    state.files = filesData.files.map(f => {
+      const prev = prevMap.get(f.name);
+      return {
+        ...f,
+        selected: f.supported && (prev ? prev.selected : (prevMap.size === 0 && filesData.files.length <= 12)),
+        analyzing: false,
+        analysisStatus: prev ? prev.analysisStatus : null,
+        errorReason: prev ? prev.errorReason : null
+      };
+    });
 
     state.organized = statusData.organized;
     state.batches = statusData.batches;
@@ -234,7 +270,8 @@ async function refresh() {
     // Model Selector dropdown
     const select = el('model-select');
     if (select) {
-      const prevVal = select.value;
+      const savedModel = localStorage.getItem('slothdesk-model');
+      const prevVal = select.value || savedModel;
       select.replaceChildren();
       const options = state.installed.length ? state.installed : [state.recommended_model];
       for (const m of options) {
@@ -260,15 +297,32 @@ async function refresh() {
       if (!info.reachable) {
         dot.classList.add('error');
         textSpan.textContent = 'Ollama offline';
-        statusWrap.title = 'Ollama is not running. Start Ollama to enable AI analysis.';
+        statusWrap.title = 'Ollama is unreachable on localhost:11434. Run: ollama serve';
+        showErrorAlert(
+          'Ollama Server Offline',
+          'Local Ollama is not running on localhost:11434. Start Ollama with "ollama serve" in your terminal to enable AI suggestions.',
+          'Retry connection',
+          refresh
+        );
       } else if (!state.installed.length) {
         dot.classList.add('error');
         textSpan.textContent = 'No local model';
-        statusWrap.title = 'No models found. Run: ollama pull qwen2.5:1.5b';
+        statusWrap.title = 'No models found in Ollama. Run: ollama pull qwen2.5:1.5b';
+        showErrorAlert(
+          'No Model Installed',
+          'Ollama is running, but no models were found. Install the recommended model with "ollama pull qwen2.5:1.5b".',
+          'Refresh models',
+          refresh
+        );
       } else {
         dot.classList.add('ready');
-        textSpan.textContent = `Model ready (${state.installed.length})`;
-        statusWrap.title = `Ollama connected. ${state.installed.length} local model(s) available.`;
+        textSpan.textContent = 'Model ready';
+        const activeModelName = select ? select.value : state.recommended_model;
+        statusWrap.title = `Ollama connected. Active: ${activeModelName} (${state.installed.length} available).`;
+        const alertTitle = el('error-alert-title');
+        if (alertTitle && (alertTitle.textContent.includes('Ollama') || alertTitle.textContent.includes('Model'))) {
+          hideErrorAlert();
+        }
       }
       statusWrap.append(dot, textSpan);
     }
@@ -281,7 +335,9 @@ async function refresh() {
     if (el('stat-organized')) el('stat-organized').textContent = totalOrganized;
 
     const activeBatchCount = state.history.filter(b => !b.undone).length;
-    if (el('stat-batches')) el('stat-batches').textContent = `${activeBatchCount} active`;
+    if (el('stat-batches')) {
+      el('stat-batches').textContent = `${activeBatchCount} active ${activeBatchCount === 1 ? 'batch' : 'batches'}`;
+    }
 
     renderFiles();
     renderCategories();
@@ -297,6 +353,21 @@ function renderFiles() {
   const root = el('file-list');
   if (!root) return;
   root.replaceChildren();
+
+  // Retry failed toolbar toggle
+  const failedFiles = state.files.filter(f => f.supported && f.analysisStatus === 'error');
+  const retryBtn = el('retry-failed-btn');
+  const retrySep = el('retry-failed-sep');
+  if (retryBtn) {
+    if (failedFiles.length > 0) {
+      retryBtn.textContent = `Retry failed (${failedFiles.length})`;
+      retryBtn.hidden = false;
+      if (retrySep) retrySep.hidden = false;
+    } else {
+      retryBtn.hidden = true;
+      if (retrySep) retrySep.hidden = true;
+    }
+  }
 
   if (!state.files.length) {
     const empty = document.createElement('div');
@@ -375,14 +446,15 @@ function renderFiles() {
       tag.textContent = 'Analyzed';
     } else if (f.analysisStatus === 'error') {
       tag.className = 'status-tag warn';
-      tag.textContent = 'Error';
+      tag.textContent = 'Failed';
+      tag.title = f.errorReason || 'Analysis failed. Click Retry failed to run again.';
     } else if (!f.supported) {
       tag.className = 'status-tag warn';
       tag.textContent = 'Exceeds 2 MB';
       tag.title = 'File exceeds the 2 MB local processing limit.';
     } else {
       tag.className = 'status-tag ok';
-      tag.textContent = 'Supported';
+      tag.textContent = 'Ready';
     }
     statusCol.append(tag);
 
@@ -395,6 +467,12 @@ function renderCategories() {
   const root = el('categories');
   if (!root) return;
   root.replaceChildren();
+
+  const totalOrganized = Object.values(state.organized).reduce((acc, n) => acc + n, 0);
+  const subTitle = el('organized-subtitle');
+  if (subTitle) {
+    subTitle.textContent = `7 categories · ${totalOrganized} file${totalOrganized === 1 ? '' : 's'} organized.`;
+  }
 
   for (const name of CATEGORIES) {
     const count = state.organized[name] || 0;
@@ -682,41 +760,41 @@ async function analyze() {
   busy(true);
   const model = el('model-select') ? el('model-select').value : state.recommended_model;
 
-  // Show live analysis banner
+  // Show live analysis banner with reset state
   const banner = el('analysis-banner');
   const bannerTitle = el('analysis-title');
   const bannerSubtext = el('analysis-subtext');
   const bannerFill = el('analysis-progress-fill');
 
   if (banner) {
+    banner.className = 'analysis-banner';
     banner.hidden = false;
     if (bannerTitle) bannerTitle.textContent = 'Local AI Inference in Progress';
     if (bannerSubtext) bannerSubtext.textContent = `Preparing ${selected.length} file(s)...`;
     if (bannerFill) bannerFill.style.width = '0%';
   }
 
-  // Clear previous suggestions for clean streaming
-  state.suggestions = [];
-  renderReview();
-
   let completedCount = 0;
   let errorCount = 0;
+  const totalCount = selected.length;
   const startTime = Date.now();
 
   try {
-    for (let i = 0; i < selected.length; i++) {
+    for (let i = 0; i < totalCount; i++) {
       const file = selected[i];
 
       // Mark current file as analyzing
       file.analyzing = true;
       file.analysisStatus = 'processing';
+      file.errorReason = null;
       renderFiles();
 
+      const remaining = totalCount - i - 1;
       if (bannerSubtext) {
-        bannerSubtext.textContent = `Analyzing ${i + 1} of ${selected.length}: ${file.name}`;
+        bannerSubtext.textContent = `Analyzing ${i + 1} of ${totalCount}: ${file.name} (${completedCount} completed, ${errorCount} failed, ${remaining} remaining)`;
       }
       if (bannerFill) {
-        bannerFill.style.width = `${Math.round((i / selected.length) * 100)}%`;
+        bannerFill.style.width = `${Math.round(((completedCount + errorCount) / totalCount) * 100)}%`;
       }
 
       try {
@@ -729,60 +807,95 @@ async function analyze() {
             invalid: false,
             isNew: true
           };
-          state.suggestions.push(proposal);
 
-          // Append recommendation card with restrained entrance animation
-          const reviewRoot = el('review-list');
-          if (reviewRoot) {
-            // Remove empty state if present
-            const emptyEl = reviewRoot.querySelector('.empty-state');
-            if (emptyEl) emptyEl.remove();
-
-            const card = createSuggestionCard(proposal);
-            reviewRoot.append(card);
+          // Upsert suggestion: replace existing card for this file or append
+          const existingIdx = state.suggestions.findIndex(s => s.name === file.name);
+          if (existingIdx >= 0) {
+            state.suggestions[existingIdx] = proposal;
+          } else {
+            state.suggestions.push(proposal);
           }
 
           file.analyzing = false;
           file.analysisStatus = 'done';
+          file.errorReason = null;
           completedCount++;
         } else if (result.errors && result.errors.length > 0) {
           file.analyzing = false;
           file.analysisStatus = 'error';
+          file.errorReason = result.errors[0].message;
           errorCount++;
           toast(`${file.name}: ${result.errors[0].message}`, true);
         }
       } catch (fileErr) {
         file.analyzing = false;
         file.analysisStatus = 'error';
+        file.errorReason = fileErr.message;
         errorCount++;
         toast(`${file.name}: ${fileErr.message}`, true);
       }
 
       if (bannerFill) {
-        bannerFill.style.width = `${Math.round(((i + 1) / selected.length) * 100)}%`;
+        bannerFill.style.width = `${Math.round(((completedCount + errorCount) / totalCount) * 100)}%`;
       }
       renderFiles();
+      renderReview();
       updateButtons();
-      if (el('review-label')) el('review-label').textContent = state.suggestions.length;
-      if (el('stat-suggestions')) el('stat-suggestions').textContent = state.suggestions.length;
-      if (el('review-selection')) {
-        el('review-selection').textContent = `${state.suggestions.length} of ${state.suggestions.length} selected`;
-      }
     }
 
     const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-    if (bannerSubtext) {
-      bannerSubtext.textContent = `Analysis complete: ${completedCount} proposal(s) generated in ${elapsed}s.`;
-    }
-    toast(`AI finished ${completedCount} proposal(s) in ${elapsed}s.${errorCount ? ' ' + errorCount + ' file(s) failed.' : ''}`, errorCount > 0);
 
-    setTimeout(() => {
-      if (banner) banner.hidden = true;
-    }, 1500);
+    if (errorCount === 0) {
+      if (bannerTitle) bannerTitle.textContent = 'Analysis Complete';
+      if (bannerSubtext) {
+        bannerSubtext.textContent = `Analysis complete: ${completedCount} proposal(s) generated in ${elapsed}s.`;
+      }
+      toast(`AI finished ${completedCount} proposal(s) in ${elapsed}s.`);
+      setTimeout(() => {
+        if (banner) banner.hidden = true;
+      }, 1800);
+    } else if (completedCount > 0 && errorCount > 0) {
+      if (banner) banner.classList.add('warning');
+      if (bannerTitle) bannerTitle.textContent = 'Analysis Finished with Warnings';
+      if (bannerSubtext) {
+        bannerSubtext.textContent = `Partial completion: ${completedCount} succeeded, ${errorCount} failed in ${elapsed}s.`;
+      }
+      showErrorAlert(
+        'Partial Analysis Failure',
+        `${errorCount} file(s) failed during analysis. Successful proposals have been preserved in the review list. Click below to retry only the failed files.`,
+        'Retry failed files',
+        retryFailed
+      );
+      setTimeout(() => {
+        if (banner) banner.hidden = true;
+      }, 3500);
+    } else {
+      if (banner) {
+        banner.classList.add('error');
+        if (bannerFill) bannerFill.style.width = '0%';
+      }
+      if (bannerTitle) bannerTitle.textContent = 'Analysis Failed';
+      if (bannerSubtext) {
+        bannerSubtext.textContent = `Analysis failed: 0 proposals generated, ${errorCount} file(s) failed.`;
+      }
+      showErrorAlert(
+        'Analysis Failed',
+        `None of the ${errorCount} selected file(s) could be analyzed. Ensure Ollama is running ('ollama serve') and retry.`,
+        'Retry failed files',
+        retryFailed
+      );
+      setTimeout(() => {
+        if (banner) banner.hidden = true;
+      }, 3500);
+    }
 
   } catch (err) {
+    showErrorAlert('Analysis Error', err.message);
     toast(err.message, true);
-    if (banner) banner.hidden = true;
+    if (banner) {
+      if (bannerFill) bannerFill.style.width = '0%';
+      banner.hidden = true;
+    }
   } finally {
     for (const f of state.files) {
       f.analyzing = false;
@@ -790,6 +903,20 @@ async function analyze() {
     renderFiles();
     busy(false);
   }
+}
+
+async function retryFailed() {
+  const failed = state.files.filter(f => f.supported && f.analysisStatus === 'error');
+  if (!failed.length) {
+    toast('No failed files to retry.');
+    return;
+  }
+  for (const f of state.files) {
+    f.selected = f.supported && f.analysisStatus === 'error';
+  }
+  renderFiles();
+  updateButtons();
+  await analyze();
 }
 
 // File Organization Approval with Leaving & Bump Animations
@@ -838,11 +965,18 @@ async function approve() {
     const movedCount = (result.moved || []).length;
     const errCount = (result.errors || []).length;
     if (errCount > 0) {
+      const firstMsg = result.errors[0]?.message || 'File conflict occurred';
+      showErrorAlert(
+        'Organization Warning',
+        `${movedCount} file(s) organized. ${errCount} file(s) encountered conflicts and were kept in inbox: ${firstMsg}`
+      );
       toast(`${movedCount} file(s) organized. ${errCount} file(s) encountered conflicts and were kept in inbox.`, true);
     } else {
+      hideErrorAlert();
       toast(`Successfully organized ${movedCount} file(s).`);
     }
   } catch (err) {
+    showErrorAlert('Organization Error', err.message);
     toast(err.message, true);
   } finally {
     busy(false);
@@ -856,8 +990,9 @@ async function undo() {
     return;
   }
 
+  const fileText = `${activeBatch.count} file${activeBatch.count === 1 ? '' : 's'}`;
   const confirmed = window.confirm(
-    `Undo batch #${activeBatch.id} (${activeBatch.count} files)?\n\nFiles will be restored to data/inbox/. Any conflicting files will be preserved safely without overwriting.`
+    `Undo batch #${activeBatch.id} (${fileText})?\n\nFiles will be restored to data/inbox/. Any conflicting files will be preserved safely without overwriting.`
   );
   if (!confirmed) return;
 
@@ -870,11 +1005,18 @@ async function undo() {
     const restoredCount = (result.restored || []).length;
     const errCount = (result.errors || []).length;
     if (errCount > 0) {
+      const firstMsg = result.errors[0]?.message || 'File conflict occurred';
+      showErrorAlert(
+        'Undo Conflict',
+        `Restored ${restoredCount} file(s) to inbox. ${errCount} file(s) could not be restored due to existing files: ${firstMsg}`
+      );
       toast(`Restored ${restoredCount} file(s) to inbox. ${errCount} file(s) could not be restored due to existing files.`, true);
     } else {
+      hideErrorAlert();
       toast(`Batch #${result.batch_id} undone: ${restoredCount} file(s) restored to inbox.`);
     }
   } catch (err) {
+    showErrorAlert('Undo Error', err.message);
     toast(err.message, true);
   } finally {
     busy(false);
@@ -958,8 +1100,20 @@ if (el('undo-button')) el('undo-button').addEventListener('click', undo);
 if (el('export-button')) el('export-button').addEventListener('click', exportPlan);
 if (el('select-all-inbox')) el('select-all-inbox').addEventListener('click', selectAllInbox);
 if (el('deselect-all-inbox')) el('deselect-all-inbox').addEventListener('click', deselectAllInbox);
+if (el('retry-failed-btn')) el('retry-failed-btn').addEventListener('click', retryFailed);
+if (el('error-alert-close')) el('error-alert-close').addEventListener('click', hideErrorAlert);
 if (el('select-all-review')) el('select-all-review').addEventListener('click', selectAllReview);
 if (el('deselect-all-review')) el('deselect-all-review').addEventListener('click', deselectAllReview);
+
+if (el('model-select')) {
+  el('model-select').addEventListener('change', (e) => {
+    localStorage.setItem('slothdesk-model', e.target.value);
+    const statusWrap = el('model-status');
+    if (statusWrap && state.connected) {
+      statusWrap.title = `Ollama connected. Selected model: ${e.target.value} (${state.installed.length} available).`;
+    }
+  });
+}
 
 // Initialization
 initTheme();

@@ -8,8 +8,8 @@ import threading
 import unittest
 from http.server import ThreadingHTTPServer
 from pathlib import Path
-from unittest.mock import patch
-from urllib.error import HTTPError
+from unittest.mock import patch, MagicMock
+from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 
@@ -523,6 +523,154 @@ class SlothDeskTests(unittest.TestCase):
         finally:
             server.shutdown(); server.server_close(); thread.join(timeout=2)
 
+    def test_analyze_single_file_success(self):
+        """Single file analysis returns clean proposal with 200 OK."""
+        (app.INBOX / 'readme.txt').write_text('Project documentation and setup notes.')
+        server = ThreadingHTTPServer(('127.0.0.1', 0), app.Handler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        base = f'http://127.0.0.1:{server.server_port}'
+        try:
+            with patch.object(app, 'installed_models', return_value={'reachable': True, 'models': ['qwen2.5:1.5b']}), \
+                 patch.object(app, 'local_ai', return_value={
+                     'category': 'Projects', 'suggested_stem': 'readme-guide',
+                     'summary': 'Setup instructions', 'reason': 'Project docs'}):
+                req = Request(base + '/api/analyze', data=json.dumps({'files': ['readme.txt']}).encode(),
+                              headers={'Content-Type': 'application/json'}, method='POST')
+                with urlopen(req) as resp:
+                    data = json.loads(resp.read().decode())
+                self.assertEqual(len(data['suggestions']), 1)
+                self.assertEqual(len(data['errors']), 0)
+                self.assertEqual(data['suggestions'][0]['name'], 'readme.txt')
+                self.assertEqual(data['suggestions'][0]['category'], 'Projects')
+                self.assertEqual(data['suggestions'][0]['suggested_name'], 'readme-guide.txt')
+        finally:
+            server.shutdown(); server.server_close(); thread.join(timeout=2)
+
+    def test_analyze_multiple_files_success(self):
+        """Multi-file batch processes each file and returns all proposals."""
+        (app.INBOX / 'doc1.md').write_text('First doc')
+        (app.INBOX / 'doc2.py').write_text('Second script')
+        server = ThreadingHTTPServer(('127.0.0.1', 0), app.Handler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        base = f'http://127.0.0.1:{server.server_port}'
+        try:
+            with patch.object(app, 'installed_models', return_value={'reachable': True, 'models': ['qwen2.5:1.5b']}), \
+                 patch.object(app, 'local_ai', side_effect=[
+                     {'category': 'Reading', 'suggested_stem': 'first-doc', 'summary': 'Doc 1', 'reason': 'Notes'},
+                     {'category': 'Code', 'suggested_stem': 'second-script', 'summary': 'Script 2', 'reason': 'Python'}]):
+                req = Request(base + '/api/analyze', data=json.dumps({'files': ['doc1.md', 'doc2.py']}).encode(),
+                              headers={'Content-Type': 'application/json'}, method='POST')
+                with urlopen(req) as resp:
+                    data = json.loads(resp.read().decode())
+                self.assertEqual(len(data['suggestions']), 2)
+                self.assertEqual(len(data['errors']), 0)
+                self.assertEqual(data['suggestions'][0]['suggested_name'], 'first-doc.md')
+                self.assertEqual(data['suggestions'][1]['suggested_name'], 'second-script.py')
+        finally:
+            server.shutdown(); server.server_close(); thread.join(timeout=2)
+
+    def test_analyze_connection_failure(self):
+        """When Ollama is unreachable, returns clear recovery message without crashing."""
+        (app.INBOX / 'test.txt').write_text('content')
+        with patch('app.urlopen', side_effect=URLError(ConnectionRefusedError(61, 'Connection refused'))):
+            with self.assertRaises(ValueError) as ctx:
+                app.local_ai('prompt')
+            self.assertIn("Local Ollama server is unreachable on localhost:11434. Run 'ollama serve'.", str(ctx.exception))
+
+    def test_analyze_timeout(self):
+        """When Ollama times out, returns distinct timeout recovery message."""
+        (app.INBOX / 'test.txt').write_text('content')
+        with patch('app.urlopen', side_effect=TimeoutError('timed out')):
+            with self.assertRaises(ValueError) as ctx:
+                app.local_ai('prompt')
+            self.assertIn("Ollama request timed out after 90 seconds", str(ctx.exception))
+
+    def test_analyze_invalid_json_response(self):
+        """When model outputs malformed non-JSON, returns retry advice."""
+        (app.INBOX / 'test.txt').write_text('content')
+        mock_resp = MagicMock()
+        mock_resp.read.return_value = json.dumps({'message': {'content': 'Sorry, I cannot format as JSON'}}).encode()
+        mock_resp.__enter__.return_value = mock_resp
+        with patch('app.urlopen', return_value=mock_resp):
+            with self.assertRaises(ValueError) as ctx:
+                app.local_ai('prompt')
+            self.assertIn("Model did not return valid JSON. Retry this file.", str(ctx.exception))
+
+    def test_analyze_partial_failure(self):
+        """Partial failure in batch preserves successful proposals and isolates errors."""
+        (app.INBOX / 'good.txt').write_text('valid content')
+        (app.INBOX / 'corrupt.txt').write_text('corrupt content')
+        server = ThreadingHTTPServer(('127.0.0.1', 0), app.Handler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        base = f'http://127.0.0.1:{server.server_port}'
+        try:
+            def fake_analyze(name, model=app.DEFAULT_MODEL):
+                if name == 'corrupt.txt':
+                    raise ValueError('Corrupted document format')
+                return {'name': name, 'category': 'Study', 'suggested_name': 'good-doc.txt',
+                        'summary': 'Good', 'reason': 'Valid'}
+
+            with patch.object(app, 'installed_models', return_value={'reachable': True, 'models': ['qwen2.5:1.5b']}), \
+                 patch.object(app, 'analyze_one', side_effect=fake_analyze):
+                req = Request(base + '/api/analyze', data=json.dumps({'files': ['good.txt', 'corrupt.txt']}).encode(),
+                              headers={'Content-Type': 'application/json'}, method='POST')
+                with urlopen(req) as resp:
+                    data = json.loads(resp.read().decode())
+                self.assertEqual(len(data['suggestions']), 1)
+                self.assertEqual(data['suggestions'][0]['name'], 'good.txt')
+                self.assertEqual(len(data['errors']), 1)
+                self.assertEqual(data['errors'][0]['name'], 'corrupt.txt')
+                self.assertIn('Corrupted document format', data['errors'][0]['message'])
+        finally:
+            server.shutdown(); server.server_close(); thread.join(timeout=2)
+
+    def test_analyze_model_selection_routed(self):
+        """Selected custom model name is routed to Ollama payload."""
+        (app.INBOX / 'sample.md').write_text('# Title')
+        server = ThreadingHTTPServer(('127.0.0.1', 0), app.Handler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        base = f'http://127.0.0.1:{server.server_port}'
+        try:
+            with patch.object(app, 'installed_models', return_value={'reachable': True, 'models': ['custom-qwen:7b']}), \
+                 patch.object(app, 'analyze_one', return_value={
+                     'name': 'sample.md', 'category': 'Reading', 'suggested_name': 'sample.md',
+                     'summary': '', 'reason': ''}) as mock_analyze:
+                req = Request(base + '/api/analyze',
+                              data=json.dumps({'files': ['sample.md'], 'model': 'custom-qwen:7b'}).encode(),
+                              headers={'Content-Type': 'application/json'}, method='POST')
+                with urlopen(req) as resp:
+                    self.assertEqual(resp.status, 200)
+                mock_analyze.assert_called_once_with('sample.md', 'custom-qwen:7b')
+        finally:
+            server.shutdown(); server.server_close(); thread.join(timeout=2)
+
+    def test_apply_revalidates_and_handles_missing_source(self):
+        """Approval step revalidates files and safely reports if source file disappeared."""
+        (app.INBOX / 'transient.txt').write_text('content')
+        (app.INBOX / 'transient.txt').unlink()
+
+        plan = [{'name': 'transient.txt', 'category': 'Other', 'suggested_name': 'transient.txt'}]
+        result = app.apply_plan(plan)
+        self.assertEqual(len(result['moved']), 0)
+        self.assertEqual(len(result['errors']), 1)
+        self.assertEqual(result['errors'][0]['name'], 'transient.txt')
+        self.assertIn('missing', result['errors'][0]['message'].lower())
+
+    def test_undo_handles_missing_destination(self):
+        """Undo step skips missing destination items, records error, and preserves consistency."""
+        (app.INBOX / 'orig.txt').write_text('Original')
+        app.apply_plan([{'name': 'orig.txt', 'category': 'Reading', 'suggested_name': 'orig.txt'}])
+
+        (app.ORGANIZED / 'Reading' / 'orig.txt').unlink()
+
+        res = app.undo_last()
+        self.assertEqual(len(res['restored']), 0)
+        self.assertEqual(len(res['errors']), 1)
+        self.assertEqual(res['errors'][0]['name'], 'orig.txt')
 
 
 if __name__ == '__main__':

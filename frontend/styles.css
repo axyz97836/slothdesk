@@ -406,6 +406,89 @@ body {
   gap: var(--space-6);
 }
 
+/* Persistent Actionable Error Alert Banner */
+.error-alert {
+  background-color: var(--color-danger-subtle);
+  border: 1px solid var(--color-danger-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-4) var(--space-5);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  animation: bannerFadeIn var(--motion-entry);
+}
+
+.error-alert.warning {
+  background-color: var(--color-warning-subtle);
+  border-color: var(--color-warning-border);
+}
+
+.error-alert-content {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  flex: 1;
+}
+
+.error-alert-icon {
+  color: var(--color-danger);
+  flex-shrink: 0;
+  display: flex;
+  margin-top: 2px;
+}
+
+.error-alert.warning .error-alert-icon {
+  color: var(--color-warning);
+}
+
+.error-alert-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.error-alert-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-danger);
+}
+
+.error-alert.warning .error-alert-title {
+  color: var(--color-warning);
+}
+
+.error-alert-message {
+  font-size: 12px;
+  color: var(--color-text-primary);
+  line-height: 1.4;
+}
+
+.error-alert-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-shrink: 0;
+}
+
+.error-alert-close {
+  background: transparent;
+  border: none;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  padding: var(--space-1);
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color var(--motion-hover), background-color var(--motion-hover);
+}
+
+.error-alert-close:hover {
+  color: var(--color-text-primary);
+  background-color: var(--color-surface);
+}
+
 .workspace-twopane {
   display: grid;
   grid-template-columns: minmax(360px, 1fr) minmax(500px, 1.45fr);
@@ -661,6 +744,17 @@ body {
 .selection-tools .sep {
   color: var(--color-border);
   user-select: none;
+}
+
+.btn-retry-failed {
+  color: var(--color-warning);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.btn-retry-failed:hover {
+  color: var(--color-warning-hover, var(--color-warning));
+  text-decoration: underline;
 }
 
 .selection-count {
@@ -942,6 +1036,38 @@ body {
   background-color: var(--color-primary);
   border-radius: var(--radius-xs);
   transition: width 240ms ease-out;
+}
+
+.analysis-banner.warning {
+  border-bottom-color: var(--color-warning-border);
+}
+
+.analysis-banner.warning .analysis-title {
+  color: var(--color-warning);
+}
+
+.analysis-banner.warning .analysis-spinner {
+  stroke: var(--color-warning);
+}
+
+.analysis-banner.warning .analysis-progress-fill {
+  background-color: var(--color-warning);
+}
+
+.analysis-banner.error {
+  border-bottom-color: var(--color-danger-border);
+}
+
+.analysis-banner.error .analysis-title {
+  color: var(--color-danger);
+}
+
+.analysis-banner.error .analysis-spinner {
+  stroke: var(--color-danger);
+}
+
+.analysis-banner.error .analysis-progress-fill {
+  background-color: var(--color-danger);
 }
 
 /* ==========================================================================

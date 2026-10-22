@@ -184,9 +184,11 @@ def local_ai(prompt, model=DEFAULT_MODEL):
         with urlopen(req, timeout=90) as response:
             data = json.loads(response.read())
     except HTTPError as exc:
-        raise ValueError(f"Ollama returned HTTP {exc.code}; check that the model is installed") from exc
-    except (OSError, URLError, TimeoutError) as exc:
-        raise ValueError("Local Ollama is unavailable or timed out") from exc
+        raise ValueError(f"Ollama returned HTTP {exc.code}. Ensure model '{model}' is installed.") from exc
+    except TimeoutError as exc:
+        raise ValueError("Ollama request timed out after 90 seconds. Try a smaller file or faster model.") from exc
+    except (OSError, URLError) as exc:
+        raise ValueError("Local Ollama server is unreachable on localhost:11434. Run 'ollama serve'.") from exc
     try:
         raw = data["message"]["content"].strip()
         if raw.startswith("```"):

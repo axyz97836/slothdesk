@@ -65,6 +65,29 @@
     <span id="stat-suggestions" class="sr-only">0</span>
     <span id="nav-count" class="sr-only">0</span>
 
+    <!-- Actionable Persistent Error Alert Banner -->
+    <div id="error-alert" class="error-alert" hidden role="alert" aria-live="assertive">
+      <div class="error-alert-content">
+        <div class="error-alert-icon">
+          <svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+          </svg>
+        </div>
+        <div class="error-alert-text">
+          <strong class="error-alert-title" id="error-alert-title">System Alert</strong>
+          <p class="error-alert-message" id="error-alert-message"></p>
+        </div>
+      </div>
+      <div class="error-alert-actions">
+        <button type="button" class="btn btn-secondary btn-sm" id="error-alert-action" hidden>Action</button>
+        <button type="button" class="error-alert-close" id="error-alert-close" aria-label="Dismiss alert" title="Dismiss alert">
+          <svg class="icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+
     <!-- Two-Pane Primary Workspace on Desktop -->
     <div class="workspace-twopane">
       <!-- 1. Inbox Section (Left Pane) -->
@@ -102,6 +125,8 @@
             <button type="button" class="btn-link" id="select-all-inbox">Select all</button>
             <span class="sep" aria-hidden="true">·</span>
             <button type="button" class="btn-link" id="deselect-all-inbox">Deselect all</button>
+            <span class="sep" id="retry-failed-sep" aria-hidden="true" hidden>·</span>
+            <button type="button" class="btn-link btn-retry-failed" id="retry-failed-btn" hidden>Retry failed (0)</button>
             <span class="selection-count" id="inbox-selection-summary">0 of 0 files selected</span>
           </div>
           <div class="analyze-group">
@@ -212,7 +237,7 @@
               <span>Organized Files</span>
               <span class="badge" id="stat-organized">0</span>
             </h2>
-            <p class="panel-subtitle">Categories created in <code>data/organized/</code>.</p>
+            <p class="panel-subtitle" id="organized-subtitle">7 categories in <code>data/organized/</code>.</p>
           </div>
         </div>
         <div id="categories" class="categories-grid" role="list"></div>
