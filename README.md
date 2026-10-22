@@ -37,9 +37,11 @@ The model downloads once. Afterwards the sorting workflow can run offline. Check
 
 ## 2. Run SlothDesk
 
-Unzip the project, then open a terminal in the extracted `SlothDesk` directory:
+Clone the repository and open a terminal in the project directory:
 
 ```bash
+git clone https://github.com/axyz97836/slothdesk.git
+cd slothdesk
 python3 app.py
 ```
 
@@ -59,23 +61,49 @@ Do not open `frontend/index.html` directly: SlothDesk's local Python server prov
 
 You can add your own **non-sensitive** test files directly into `data/inbox/` in Finder or your file manager. You must create the sample files yourself; the demo button creates fictional ones, not personal data.
 
+### Keyboard shortcuts
+
+| Shortcut | Action |
+|----------|--------|
+| `Alt+A` | Analyze inbox |
+| `Alt+O` | Approve & organize |
+| `Alt+S` | Select all suggestions |
+| `Alt+D` | Deselect all |
+| `Alt+R` | Refresh inbox |
+| `Alt+Z` | Undo last batch |
+| `Alt+T` | Toggle light/dark theme |
+| `?` or `/` | Show help |
+
+Shortcuts are disabled when typing in input fields.
+
 ### Supported input files
 
 `.txt`, `.md`, `.csv`, `.json`, `.py`, `.js`, `.html`, `.log`, `.yaml`, `.yml`.
 
 Scans only the top level of `data/inbox/`. Files above 2 MB are displayed but won't be sent to the model. To minimize prompt length, the model reads only the **first 5,500 decoded characters** from each file. This release deliberately does **not** parse PDF, Word, images, email accounts, or binary files.
 
-### Safety and data handling
+## Safety and data handling
 
 - The Python server binds only to **127.0.0.1**, never to the public internet.
 - The app contacts only your **local** Ollama service, on `127.0.0.1:11434`. Choose only locally downloaded models; do not use Ollama cloud model aliases if you require strict offline operation.
+- **Atomic file moves:** same-filesystem moves use hardlinks to prevent partial transfers. Cross-filesystem moves use staged temporary files with atomic commits.
+- **No-clobber guarantee:** destination files are never silently overwritten.
+- **Inode-verified undo:** rollback checks file identity (`st_ino`, `st_dev`) before restoring, preventing accidental overwrites if files changed externally.
+- **Process locking:** advisory file lock on `data/.slothdesk.lock` prevents multiple SlothDesk instances from corrupting the same data directory.
 - All file content is treated as *untrusted text* in the model prompt. AI suggestions can be wrong: **review before moving**.
 - No autonomous deletion, emails, uploads, scheduled scans, purchases, or publishing.
-- File moves can be undone for the latest batch unless paths have changed or original names are already occupied.
-- Changes are stored locally in `data/history.json`, excluded from Git by `.gitignore`.
 - Only recognized local text extensions are read; symbolic links and path traversal are rejected.
 - The frontend does not load Google Fonts, external scripts, analytics, images, or APIs.
 - Avoid exposing the server through a tunnel or public network. This is a local, single-user development tool, not a hardened multi-user production service.
+
+## Themes
+
+SlothDesk ships with two themes:
+
+- **Warm Ivory** (default light) — warm paper background with emerald green accents and vermilion highlights.
+- **Emerald Night** (dark) — deep emerald background with soft ivory text.
+
+Toggle with `Alt+T` or the theme button. Both themes meet WCAG 2.2 AA contrast requirements.
 
 ## Architecture
 
@@ -104,6 +132,8 @@ All backend functionality uses the Python standard library; **no pip install** n
 python3 -m unittest discover -s tests -v
 ```
 
+38 tests covering filesystem safety, atomic moves, undo verification, collision handling, path rejection, concurrency, error recovery, and process locking.
+
 The tests use a mocked local model response. **Running unit tests does not prove a live Ollama model is installed or working.** Before submitting the challenge, run the complete workflow using your actual local model and capture it on video.
 
 ## What to show in your challenge demo
@@ -123,6 +153,11 @@ To capture a short screen recording on macOS, use **Shift + Command + 5 → Reco
 - Long or complex documents may need a dedicated parser; this MVP intentionally prioritizes safety and transparency over broad file support.
 - Undo is one batch at a time, starting with the newest non-undone batch; it cannot undo arbitrary filesystem changes made outside the app.
 - No synthetic "time saved" metrics are presented as measured results. If discussing savings in a DEV post, time a real before/after test first.
+- Thread locking protects against concurrent HTTP requests but not against external programs modifying the data directory simultaneously. See [SECURITY.md](SECURITY.md) for the full threat model.
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 
