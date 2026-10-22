@@ -1,5 +1,10 @@
 # SlothDesk 🦥
 
+[![Release](https://img.shields.io/github/v/release/axyz97836/slothdesk?color=2D6A4F&label=Release)](https://github.com/axyz97836/slothdesk/releases/tag/v1.0.0)
+[![CI Checks](https://github.com/axyz97836/slothdesk/actions/workflows/tests.yml/badge.svg?branch=main)](https://github.com/axyz97836/slothdesk/actions/workflows/tests.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-D96B43.svg)](LICENSE)
+[![Tests](https://img.shields.io/badge/Tests-38%20passing-2D6A4F.svg)](tests/test_app.py)
+
 **Less filing. More living.** A fully local file tidier powered by an **open-weight language model**. Created for the **Hacktoberfest 2026 Open-Source AI Challenge, Week 3: Slow and Steady**.
 
 A script can sort `.pdf` files into a PDF folder. SlothDesk looks at the *meaning* of supported text documents, generates a brief summary, proposes a human-readable filename, and suggests a category. **Nothing is moved until you approve it.** You can also undo the last organizing batch.
@@ -14,52 +19,67 @@ A script can sort `.pdf` files into a PDF folder. SlothDesk looks at the *meanin
 
 ## Requirements
 
-- Python **3.10+** (no pip dependencies)
+- Python **3.10+** (standard library only — no pip packages needed)
 - [Ollama](https://ollama.com/download), installed and running
-- An installed **local model** (recommended `qwen2.5:1.5b`)
-- macOS, Linux, or Windows
+- Local open-weight model: **Qwen2.5 1.5B** (`ollama pull qwen2.5:1.5b`)
+- Operating systems: Tested on **macOS** (Sonoma/Sequoia on Apple Silicon & Intel) and **Linux** (Ubuntu 24.04 / 26.04). Windows is supported via Python 3.10+ and Ollama for Windows.
 
-## 1. Install and start the model (one-time)
+## Quick Start (Step-by-Step)
 
-Install Ollama from <https://ollama.com/download>. On Mac, open the Ollama app. In a terminal:
+### 1. Verify Python version
+Ensure you have Python 3.10 or higher installed:
+```bash
+python3 --version
+```
 
+### 2. Install and start Ollama
+Download and install Ollama from <https://ollama.com/download>.
+- **macOS / Windows**: Launch the installed Ollama application.
+- **Linux**: Start the Ollama background service if not already active:
+  ```bash
+  ollama serve
+  ```
+
+### 3. Download the open-weight AI model
+Download the lightweight, Apache-2.0 licensed **Qwen2.5 1.5B** model (downloads once, ~986 MB):
 ```bash
 ollama pull qwen2.5:1.5b
 ```
-
-On platforms where the Ollama service is not running automatically:
-
+Verify the model is ready with:
 ```bash
-ollama serve
+ollama list
 ```
 
-The model downloads once. Afterwards the sorting workflow can run offline. Check model availability with `ollama list`.
-
-## 2. Run SlothDesk
-
-Clone the repository and open a terminal in the project directory:
-
+### 4. Clone and run SlothDesk
+Clone the repository and start the single-process local Python server:
 ```bash
 git clone https://github.com/axyz97836/slothdesk.git
 cd slothdesk
 python3 app.py
 ```
 
-Open **http://127.0.0.1:8765** in your browser.
+### 5. Open the web interface
+Open your web browser and navigate to:
+```
+http://127.0.0.1:8765
+```
+*(Do not open `frontend/index.html` as a `file://` URL — SlothDesk requires the local Python server at `127.0.0.1:8765` for API routing).*
 
-Do not open `frontend/index.html` directly: SlothDesk's local Python server provides the API.
+### 6. Try the 2-minute demo workflow
+1. **Load sample files**: Click **Try with sample files**. Six fictional documents appear in `data/inbox/` (no personal files).
+2. **Verify model status**: Confirm the status indicator in the top bar displays **Ollama: Ready** with `qwen2.5:1.5b`.
+3. **Run AI analysis**: Click **Analyze my inbox** (or press `Alt+A`). You will see a live per-file progress tracker as local Qwen2.5 reads each file and proposes structured recommendations.
+4. **Review & edit**: Review proposed categories, filenames, summaries, and reasons. You can edit suggested filenames or categories directly in the table.
+5. **Approve & organize**: Select the checkboxes for the files you want to move and click **Approve & organize** (or press `Alt+O`). Files are atomically moved into `data/organized/<Category>/`.
+6. **Undo & restore**: Click **Undo last batch** (or press `Alt+Z`) to restore the moved files back to `data/inbox/` under their original filenames.
+7. **Toggle themes**: Press `Alt+T` to switch between **Warm Ivory** and **Emerald Night** themes.
 
-## 3. Try the 2-minute demo
-
-1. Click **Try with sample files**. Six **fictional demo files** appear in `data/inbox/`.
-2. Confirm the Ollama status reads **Ready**.
-3. Click **Analyze my inbox**. Local inference can take a minute, especially for the first run.
-4. Review the proposed destinations, filenames, summaries and reasons. Uncheck any you don't want to move.
-5. Click **Approve & organize**. Only approved suggestions move into `data/organized/<Category>/`.
-6. Click **Undo last batch** to return the files to their original inbox names. Undo will **not overwrite** a conflicting file.
-7. You can export the suggestion table to CSV before approving.
-
-You can add your own **non-sensitive** test files directly into `data/inbox/` in Finder or your file manager. You must create the sample files yourself; the demo button creates fictional ones, not personal data.
+### 7. Stopping the application
+When finished, return to the terminal running `python3 app.py` and press:
+```bash
+Ctrl+C
+```
+The server will cleanly close its listener and release its advisory lock (`data/.slothdesk.lock`).
 
 ### Keyboard shortcuts
 

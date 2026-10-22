@@ -1,72 +1,58 @@
-# SlothDesk — Hacktoberfest 2026 Week 3 Submission
+# SlothDesk — Hacktoberfest 2026 Week 3 Submission Package
 
-## Challenge
+## Challenge Details
 
-[Hacktoberfest Open-Source AI Challenge Week 3: Slow and Steady](https://dev.to/challenges/hacktoberfest-week3-2026-10-19)
+* **Challenge**: [Hacktoberfest Open-Source AI Challenge Week 3: Slow and Steady](https://dev.to/challenges/hacktoberfest-week3-2026-10-19)
+* **Deadline**: October 25, 2026 at 11:59 PM PDT
+* **Theme**: "Slow and Steady" — Building open-source AI utilities that solve repetitive tasks with transparency, patient review, and open-weight models.
+* **Eligible Tags**: `#devchallenge`, `#hf26challenge`, `#opensource`, `#ai`
 
-## Repository
+---
 
-<https://github.com/axyz97836/slothdesk>
+## Submission Artifacts
 
-Branch: `improve/v2-modernization`
+| Artifact | Location | Status |
+|---|---|---|
+| **Repository** | [https://github.com/axyz97836/slothdesk](https://github.com/axyz97836/slothdesk) | Public & Active |
+| **Release v1.0.0** | [https://github.com/axyz97836/slothdesk/releases/tag/v1.0.0](https://github.com/axyz97836/slothdesk/releases/tag/v1.0.0) | Published |
+| **DEV Post Draft** | [`DEV_SUBMISSION_DRAFT.md`](../DEV_SUBMISSION_DRAFT.md) | Ready for Final Review |
+| **Demo Script & Guide** | [`docs/DEMO_SCRIPT_AND_RECORDING_GUIDE.md`](DEMO_SCRIPT_AND_RECORDING_GUIDE.md) | Prepared |
+| **Automated Tests** | [`tests/test_app.py`](../tests/test_app.py) | 38/38 Passing |
+| **CI Checks** | GitHub Actions (`tests.yml`) | All Passing on `main` |
 
-## What SlothDesk does
+---
 
-SlothDesk is a privacy-first, fully local AI file organizer. It uses an open-weight language model (Qwen2.5 1.5B via Ollama) to analyze text files in a local inbox, generate meaningful category suggestions, human-readable filenames, and one-line summaries — then lets you review, approve, or reject every suggestion before anything is moved.
+## Project Summary
 
-**Nothing leaves your machine. Nothing moves without your approval.**
+SlothDesk is a privacy-first, fully local file organizer powered by an open-weight language model (`qwen2.5:1.5b` via Ollama). It analyzes the contents of messy text documents, proposes meaningful categories and human-readable filenames, and generates concise summaries.
 
-## How it fits the "Slow and Steady" theme
+### Core Guarantees:
+1. **Zero Cloud Dependencies**: 100% local inference via Ollama HTTP API (`127.0.0.1:11434`). No API keys, no per-token charges, and complete offline capability after setup.
+2. **Explicit Human Approval**: The AI generates recommendations in an editable table. No files move until the user reviews and clicks "Approve & Organize".
+3. **Atomic Filesystem Safety**: Same-device moves use `os.link()` + `os.unlink()`; cross-device moves use staged temporary files with atomic `os.rename()` commits. Existing files are protected with automatic numeric suffixes.
+4. **Verified Rollback & Undo**: Single-batch undo restores files to original inbox locations and names. Rollback checks `st_ino`, `st_dev`, `st_size`, `st_mtime_ns`, and `st_ctime_ns` to prevent clobbering externally modified files.
+5. **Zero Pip Packages**: Pure Python standard library backend paired with vanilla HTML5, CSS, and JavaScript.
 
-- **Deliberately paced**: inference runs locally on your own hardware, not through a fast cloud API. It's slower, but completely private.
-- **Patient review**: the model suggests; you decide. No autonomous batch processing.
-- **Incremental trust**: undo any batch, inspect every suggestion, verify every move.
-- **No rush to ship**: the codebase prioritizes safety (atomic no-clobber moves, inode-verified rollback) over feature velocity.
+---
 
-## Technology
+## Week 3 Eligibility Checklist
 
-| Component | Technology | Why |
-|-----------|-----------|-----|
-| Backend | Python 3.10+ stdlib | Zero pip dependencies |
-| Frontend | Vanilla HTML/CSS/JS | No build tools, no CDNs |
-| AI Model | Qwen2.5 1.5B (Apache 2.0) | Open-weight, runs on modest hardware |
-| Model Runtime | Ollama | Local inference on 127.0.0.1:11434 |
-| Server Binding | 127.0.0.1:8765 | Never exposed to network |
+- [x] Repository created within challenge window: **October 21, 2026** (Challenge: Oct 19–25, 2026).
+- [x] Initial commit made within challenge window: **October 21, 2026 at 17:06 UTC** (`2aed0dd`).
+- [x] All PR merges and releases completed before October 25, 2026 deadline.
+- [x] Uses genuine open-weight model: **Qwen2.5 1.5B** (Apache 2.0 license).
+- [x] Open-source license: **MIT License**.
+- [x] Public GitHub repository with clean history and zero tracked private data or secrets.
+- [x] Comprehensive test suite (38 automated unit tests).
+- [x] Verified beginner-friendly README with step-by-step setup and quick-start instructions.
+- [x] Structured DEV post following the official competition template.
 
-## Key features (v2)
+---
 
-- **Atomic file safety**: hardlink-based same-fs moves, staged cross-fs fallback, no overwrites.
-- **Undo with verification**: inode-verified rollback prevents silent data replacement.
-- **Process locking**: advisory file lock prevents multiple SlothDesk instances on the same data directory.
-- **Dual themes**: Warm Ivory (light) and Emerald Night (dark) with accessible contrast ratios.
-- **Keyboard shortcuts**: `Alt+A` analyze, `Alt+O` organize, `Alt+Z` undo, `Alt+T` theme toggle, `?` help.
-- **Partial failure recovery**: individual file errors don't abort the batch.
-- **38 automated tests**: filesystem safety, undo, concurrency, error handling.
-- **No external requests**: no fonts, analytics, trackers, or third-party scripts.
+## Demo Checklist
 
-## Demo checklist
-
-Before recording:
-
-- [ ] `ollama list` shows `qwen2.5:1.5b` installed.
-- [ ] `python3 app.py` starts without errors.
-- [ ] Click "Try with sample files" — 6 demo files appear.
-- [ ] Click "Analyze my inbox" — model generates real suggestions.
-- [ ] Review suggestions — uncheck any you disagree with.
-- [ ] Click "Approve & organize" — files move to `data/organized/<Category>/`.
-- [ ] Verify in Finder/file manager.
-- [ ] Click "Undo last batch" — files return to inbox.
-- [ ] Toggle theme with `Alt+T`.
-- [ ] (Optional) Disconnect Wi-Fi and repeat to demonstrate offline inference.
-
-## Test results
-
-```
-38 passed, 5 subtests passed
-```
-
-Run with: `python3 -m unittest discover -s tests -v`
-
-## License
-
-MIT (project code). Qwen2.5 model weights and Ollama have their own licenses.
+Before publishing the final DEV post:
+1. Record a 90–120s walkthrough following [`docs/DEMO_SCRIPT_AND_RECORDING_GUIDE.md`](DEMO_SCRIPT_AND_RECORDING_GUIDE.md).
+2. Upload the video to YouTube as **Unlisted** (or Google Drive with public link viewing).
+3. Replace the video placeholder in [`DEV_SUBMISSION_DRAFT.md`](../DEV_SUBMISSION_DRAFT.md).
+4. Review post formatting on DEV and submit under the required tags `#devchallenge` and `#hf26challenge`.

@@ -2,7 +2,19 @@
 
 All notable changes to SlothDesk are documented in this file.
 
-## [Unreleased] — v2 Modernization (`improve/v2-modernization`)
+## [1.0.0] — 2026-10-23: SlothDesk — Local AI File Organizer
+
+First formal tagged release. Merged Phase A–G improvements (`improve/v2-modernization`) into `main`.
+
+### CI & Filesystem Inode Hardening (`cc378ee`)
+
+- Hardened `safe_move_file` rollback identity check to verify `st_size`, `st_mtime_ns`, and `st_ctime_ns` alongside `st_ino` and `st_dev`, resolving Linux ext4 inode-reuse false-match during cross-filesystem rollback races.
+- All 38 automated tests passing on Ubuntu Linux and macOS CI runners.
+
+### Phase G — Documentation & Community Readiness (`754b722`)
+
+- Added formal documentation: `CHANGELOG.md`, `CONTRIBUTING.md`, `SECURITY.md`, and `docs/HACKTOBERFEST_SUBMISSION.md`.
+- Refined Quick Start documentation and verified local Qwen2.5 1.5B inference instructions.
 
 ### Phase F — Security Review & Release Readiness (`586049d`)
 
