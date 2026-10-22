@@ -283,8 +283,14 @@ def safe_move_file(src, dst):
             try:
                 if dst.exists() and not dst.is_symlink():
                     dst_stat = dst.stat()
-                    # Only rollback if dst still points to the exact inode created by SlothDesk
-                    if dst_stat.st_ino == src_stat.st_ino and dst_stat.st_dev == src_stat.st_dev:
+                    # Only rollback if dst still points to the exact untouched file created by SlothDesk
+                    if (
+                        dst_stat.st_ino == src_stat.st_ino
+                        and dst_stat.st_dev == src_stat.st_dev
+                        and dst_stat.st_size == src_stat.st_size
+                        and dst_stat.st_mtime_ns == src_stat.st_mtime_ns
+                        and dst_stat.st_ctime_ns == src_stat.st_ctime_ns
+                    ):
                         os.unlink(dst)
                     else:
                         rollback_err = OSError("Destination was replaced by an external process; preserved")
@@ -351,8 +357,14 @@ def safe_move_file(src, dst):
         try:
             if dst.exists() and not dst.is_symlink():
                 dst_stat = dst.stat()
-                # Only rollback if dst still points to the exact file created by SlothDesk
-                if dst_stat.st_ino == committed_stat.st_ino and dst_stat.st_dev == committed_stat.st_dev:
+                # Only rollback if dst still points to the exact untouched file created by SlothDesk
+                if (
+                    dst_stat.st_ino == committed_stat.st_ino
+                    and dst_stat.st_dev == committed_stat.st_dev
+                    and dst_stat.st_size == committed_stat.st_size
+                    and dst_stat.st_mtime_ns == committed_stat.st_mtime_ns
+                    and dst_stat.st_ctime_ns == committed_stat.st_ctime_ns
+                ):
                     os.unlink(dst)
                 else:
                     rollback_err = OSError("Destination was replaced by an external process; preserved")
